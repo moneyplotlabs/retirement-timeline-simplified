@@ -397,7 +397,7 @@
             </div>
 
             <div class="control-group">
-                <label class="control-label">Starting Balance ($)</label>
+                <label class="control-label" id="label-principal">Starting Balance: $0</label>
                 <div class="interactive-row">
                     <input type="range" id="input-principal" min="0" max="1000000" step="10000" value="0">
                     <input type="number" id="box-principal" class="manual-box" min="0" step="1000" value="0" placeholder="$">
@@ -405,17 +405,17 @@
             </div>
 
             <div class="control-group">
-                <label class="control-label">Annual Savings ($/yr)</label>
+                <label class="control-label" id="label-savings">Annual Savings: $10,000/yr</label>
                 <div class="interactive-row">
-                    <input type="range" id="input-savings" min="0" max="100000" step="5000" value="10000">
+                    <input type="range" id="input-savings" min="0" max="100000" step="2000" value="10000">
                     <input type="number" id="box-savings" class="manual-box" min="0" step="1000" value="10000">
                 </div>
             </div>
 
             <div class="control-group">
-                <label class="control-label">Annual Retirement Spending ($/yr)</label>
+                <label class="control-label" id="label-spending">Annual Retirement Spending: $50,000/yr</label>
                 <div class="interactive-row">
-                    <input type="range" id="input-spending" min="5000" max="100000" step="5000" value="50000">
+                    <input type="range" id="input-spending" min="0" max="100000" step="2000" value="50000">
                     <input type="number" id="box-spending" class="manual-box" min="0" step="1000" value="50000">
                 </div>
             </div>
@@ -713,6 +713,11 @@
         const c = parseFloat(boxSavings.value) || 0;
         const b = parseFloat(boxSpending.value) || 0;
         const r = (parseFloat(boxGrowth.value) || 0) / 100;
+
+        // Dynamic, zero-clutter inline label updates
+        document.getElementById('label-principal').innerText = 'Starting Balance: ' + formatCurrency(p0);
+        document.getElementById('label-savings').innerText = 'Annual Savings: ' + formatCurrency(c) + '/yr';
+        document.getElementById('label-spending').innerText = 'Annual Retirement Spending: ' + formatCurrency(b) + '/yr';
 
         const results = calculateTimeline(startAge, endAge, p0, c, b, r);
         computedPeakCache = results.peakNetWorth;
