@@ -13,6 +13,7 @@
             --text-muted: #94a3b8;
             --accent-green: #10b981;
             --accent-blue: #3b82f6;
+            --accent-red: #ef4444;
             --border: #334155;
         }
 
@@ -109,7 +110,7 @@
             padding: 16px;
             border-radius: 8px;
             border: 1px solid var(--border);
-            max-height: 550px;
+            max-height: 580px;
             overflow-y: auto;
         }
 
@@ -179,6 +180,112 @@
         
         input[type="number"]:focus {
             border-color: var(--accent-blue);
+        }
+
+        .advanced-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(51, 65, 85, 0.3);
+            border: 1px solid var(--border);
+            padding: 10px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            user-select: none;
+            transition: background 0.2s;
+            margin-top: 8px;
+        }
+
+        .advanced-toggle:hover {
+            background: rgba(51, 65, 85, 0.5);
+        }
+
+        .advanced-toggle .chevron {
+            transition: transform 0.2s ease;
+            width: 12px;
+            height: 12px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .advanced-toggle.open .chevron {
+            transform: rotate(180deg);
+        }
+
+        .advanced-content {
+            display: none;
+            flex-direction: column;
+            gap: 16px;
+            border: 1px dashed var(--border);
+            padding: 14px;
+            border-radius: 6px;
+            background: rgba(15, 23, 42, 0.2);
+        }
+
+        .advanced-content.visible {
+            display: flex;
+        }
+
+        /* ADVANCED FLEX & GRID ROW ENGINE */
+        .advanced-row-x {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            width: 100%;
+        }
+
+        .x-input-pair {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            flex: 1; /* Occupies all available space leftover by the lock button */
+        }
+
+        .advanced-row-y {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            width: 100%;
+        }
+
+        .y-input-wrap {
+            flex: 1; /* Maximizes input field dimensions to accommodate large balances */
+        }
+
+        .btn-lock {
+            background-color: var(--accent-blue);
+            color: var(--text-main);
+            border: none;
+            padding: 7px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            height: 35px;
+            white-space: nowrap;
+            transition: background 0.15s, color 0.15s;
+            width: 115px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .btn-lock:hover {
+            background-color: #2563eb;
+        }
+
+        .btn-lock.locked {
+            background-color: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-lock.locked:hover {
+            background-color: rgba(239, 68, 68, 0.3);
         }
     </style>
 </head>
@@ -255,6 +362,37 @@
                     <input type="number" id="box-growth" class="manual-box" step="any" value="3.0">
                 </div>
             </div>
+
+            <div class="advanced-toggle" id="advanced-button">
+                <span>Advanced Options</span>
+                <svg class="chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            
+            <div class="advanced-content" id="advanced-panel">
+                <!-- Balanced X-Axis Layout: Inputs split leftover space perfectly -->
+                <div class="advanced-row-x">
+                    <div class="x-input-pair">
+                        <div class="control-group">
+                            <label class="control-label">Chart Min Age</label>
+                            <input type="number" id="box-axis-min" min="0" max="100" value="" placeholder="Auto (Age)">
+                        </div>
+                        <div class="control-group">
+                            <label class="control-label">Chart Max Age</label>
+                            <input type="number" id="box-axis-max" min="30" max="150" value="" placeholder="Auto (Expectancy)">
+                        </div>
+                    </div>
+                    <button class="btn-lock" id="btn-lock-x" title="Toggle horizontal age bounds lock">Lock Current</button>
+                </div>
+
+                <!-- Expanded Y-Axis Layout: Larger field prevents truncated strings -->
+                <div class="advanced-row-y">
+                    <div class="control-group y-input-wrap">
+                        <label class="control-label">Chart Max Net Worth ($)</label>
+                        <input type="number" id="box-y-max" value="" placeholder="Auto (Peak Net Worth)">
+                    </div>
+                    <button class="btn-lock" id="btn-lock-y" title="Toggle vertical net worth bounds lock">Lock Current</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -275,14 +413,66 @@
     const boxSpending = document.getElementById('box-spending');
     const boxGrowth = document.getElementById('box-growth');
 
+    const btnAdvanced = document.getElementById('advanced-button');
+    const panelAdvanced = document.getElementById('advanced-panel');
+    const boxAxisMin = document.getElementById('box-axis-min');
+    const boxAxisMax = document.getElementById('box-axis-max');
+    const boxYMax = document.getElementById('box-y-max');
+    
+    const btnLockX = document.getElementById('btn-lock-x');
+    const btnLockY = document.getElementById('btn-lock-y');
+
     const mWorkYears = document.getElementById('metric-work-years');
     const mRetireAge = document.getElementById('metric-retire-age');
     const mPeakNw = document.getElementById('metric-peak-nw');
 
     let chartInstance = null;
+    let computedPeakCache = 0;
     const formatCurrency = (num) => '$' + Math.round(num).toLocaleString();
 
-    // 1. DYNAMIC URL GENERATION
+    btnAdvanced.addEventListener('click', () => {
+        btnAdvanced.classList.toggle('open');
+        panelAdvanced.classList.toggle('visible');
+    });
+
+    btnLockX.addEventListener('click', () => {
+        if (boxAxisMin.value !== "" || boxAxisMax.value !== "") {
+            boxAxisMin.value = "";
+            boxAxisMax.value = "";
+        } else {
+            boxAxisMin.value = parseInt(boxStartAge.value) || 0;
+            boxAxisMax.value = parseInt(boxEndAge.value) || 95;
+        }
+        updateVisualization();
+    });
+
+    btnLockY.addEventListener('click', () => {
+        if (boxYMax.value !== "") {
+            boxYMax.value = "";
+        } else if (computedPeakCache > 0) {
+            boxYMax.value = Math.round(computedPeakCache);
+        }
+        updateVisualization();
+    });
+
+    function updateButtonStates() {
+        if (boxAxisMin.value !== "" || boxAxisMax.value !== "") {
+            btnLockX.textContent = "Unlock Auto";
+            btnLockX.classList.add('locked');
+        } else {
+            btnLockX.textContent = "Lock Current";
+            btnLockX.classList.remove('locked');
+        }
+
+        if (boxYMax.value !== "") {
+            btnLockY.textContent = "Unlock Auto";
+            btnLockY.classList.add('locked');
+        } else {
+            btnLockY.textContent = "Lock Current";
+            btnLockY.classList.remove('locked');
+        }
+    }
+
     function updateURLParams() {
         const params = new URLSearchParams();
         params.set('startAge', boxStartAge.value);
@@ -291,33 +481,25 @@
         params.set('savings', boxSavings.value);
         params.set('spending', boxSpending.value);
         params.set('growth', boxGrowth.value);
+        if(boxAxisMin.value !== "") params.set('xMin', boxAxisMin.value);
+        if(boxAxisMax.value !== "") params.set('xMax', boxAxisMax.value);
+        if(boxYMax.value !== "") params.set('yMax', boxYMax.value);
         
         const newUrl = `${window.location.pathname}?${params.toString()}`;
         window.history.replaceState({}, '', newUrl);
     }
 
-    // 2. PARSE INCOMING URL QUERY STRINGS
     function loadParamsFromURL() {
         const params = new URLSearchParams(window.location.search);
-        
-        if (params.has('startAge')) {
-            boxStartAge.value = sliderStartAge.value = params.get('startAge');
-        }
-        if (params.has('endAge')) {
-            boxEndAge.value = sliderEndAge.value = params.get('endAge');
-        }
-        if (params.has('principal')) {
-            boxPrincipal.value = inputPrincipal.value = params.get('principal');
-        }
-        if (params.has('savings')) {
-            boxSavings.value = inputSavings.value = params.get('savings');
-        }
-        if (params.has('spending')) {
-            boxSpending.value = inputSpending.value = params.get('spending');
-        }
-        if (params.has('growth')) {
-            boxGrowth.value = inputGrowth.value = params.get('growth');
-        }
+        if (params.has('startAge')) boxStartAge.value = sliderStartAge.value = params.get('startAge');
+        if (params.has('endAge')) boxEndAge.value = sliderEndAge.value = params.get('endAge');
+        if (params.has('principal')) boxPrincipal.value = inputPrincipal.value = params.get('principal');
+        if (params.has('savings')) boxSavings.value = inputSavings.value = params.get('savings');
+        if (params.has('spending')) boxSpending.value = inputSpending.value = params.get('spending');
+        if (params.has('growth')) boxGrowth.value = inputGrowth.value = params.get('growth');
+        if (params.has('xMin')) boxAxisMin.value = params.get('xMin');
+        if (params.has('xMax')) boxAxisMax.value = params.get('xMax');
+        if (params.has('yMax')) boxYMax.value = params.get('yMax');
     }
 
     function evaluateEndingBalance(w, totalHorizon, p0, c, b, r) {
@@ -337,7 +519,7 @@
         let w = 0;
 
         if (totalHorizon <= 0) {
-            return { workingYears: 0, retirementAge: startAge, peakNetWorth: p0, labels: [], accumulationData: [], depletionData: [] };
+            return { workingYears: 0, retirementAge: startAge, peakNetWorth: p0, accumulationData: [], depletionData: [] };
         }
 
         if (r === 0) {
@@ -357,7 +539,6 @@
         w = Math.max(0, Math.min(totalHorizon, w));
         if (isNaN(w)) w = totalHorizon;
 
-        const labels = [];
         const accumulationData = [];
         const depletionData = [];
         
@@ -369,7 +550,7 @@
         }
 
         for (let i = 0; i <= totalHorizon; i++) {
-            labels.push('Age ' + (startAge + i));
+            const currentAgePos = startAge + i;
 
             if (i <= w) {
                 let bal = 0;
@@ -378,9 +559,10 @@
                 } else {
                     bal = p0 * Math.pow(1 + r, i) + c * (Math.pow(1 + r, i) - 1) / r;
                 }
-                accumulationData.push(bal);
-                depletionData.push(null);
-            } else {
+                accumulationData.push({ x: currentAgePos, y: bal });
+            } 
+            
+            if (i >= Math.floor(w)) {
                 const yearsRetired = i - w;
                 let bal = 0;
                 if (r === 0) {
@@ -388,13 +570,7 @@
                 } else {
                     bal = peakNetWorth * Math.pow(1 + r, yearsRetired) - b * (Math.pow(1 + r, yearsRetired) - 1) / r;
                 }
-                if (accumulationData[accumulationData.length - 1] !== null) {
-                    depletionData.push(peakNetWorth);
-                    accumulationData.push(null);
-                }
-                
-                accumulationData.push(null);
-                depletionData.push(Math.max(0, bal));
+                depletionData.push({ x: currentAgePos, y: Math.max(0, bal) });
             }
         }
 
@@ -402,7 +578,6 @@
             workingYears: w,
             retirementAge: startAge + w,
             peakNetWorth: peakNetWorth,
-            labels: labels,
             accumulationData: accumulationData,
             depletionData: depletionData
         };
@@ -412,6 +587,17 @@
         let startAge = parseInt(boxStartAge.value) || 0;
         let endAge = parseInt(boxEndAge.value) || 95;
         
+        let axisMin = boxAxisMin.value !== "" ? parseInt(boxAxisMin.value) : startAge;
+        let axisMax = boxAxisMax.value !== "" ? parseInt(boxAxisMax.value) : endAge;
+
+        if (isNaN(axisMin)) axisMin = startAge;
+        if (isNaN(axisMax)) axisMax = endAge;
+
+        if (axisMin >= axisMax) {
+            axisMax = axisMin + 10;
+            if(boxAxisMax.value !== "") boxAxisMax.value = axisMax;
+        }
+
         if (startAge >= endAge) {
             endAge = startAge + 1;
             if(endAge > 120) {
@@ -430,22 +616,26 @@
         const r = (parseFloat(boxGrowth.value) || 0) / 100;
 
         const results = calculateTimeline(startAge, endAge, p0, c, b, r);
+        computedPeakCache = results.peakNetWorth;
 
         mWorkYears.innerText = results.workingYears.toFixed(1) + ' Years';
         mRetireAge.innerText = results.workingYears === (endAge - startAge) && evaluateEndingBalance(endAge - startAge, endAge - startAge, p0, c, b, r) < 0 ? 'Never' : 'Age ' + results.retirementAge.toFixed(1);
         mPeakNw.innerText = formatCurrency(results.peakNetWorth);
 
+        let yMaxConstraint = boxYMax.value !== "" ? parseFloat(boxYMax.value) : undefined;
+
         if (chartInstance) {
-            chartInstance.data.labels = results.labels;
             chartInstance.data.datasets[0].data = results.accumulationData;
             chartInstance.data.datasets[1].data = results.depletionData;
+            chartInstance.options.scales.x.min = axisMin;
+            chartInstance.options.scales.x.max = axisMax;
+            chartInstance.options.scales.y.max = yMaxConstraint;
             chartInstance.update('none');
         } else {
             const ctx = document.getElementById('timelineChart').getContext('2d');
             chartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: results.labels,
                     datasets: [
                         {
                             label: 'Accumulation Phase',
@@ -478,13 +668,26 @@
                             mode: 'index',
                             intersect: false,
                             callbacks: {
-                                label: (context) => context.raw !== null ? context.dataset.label + ': ' + formatCurrency(context.raw) : null
+                                title: (context) => 'Age ' + context[0].parsed.x,
+                                label: (context) => context.raw !== null ? context.dataset.label + ': ' + formatCurrency(context.parsed.y) : null
                             }
                         }
                     },
                     scales: {
-                        x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
+                        x: { 
+                            type: 'linear',  
+                            min: axisMin,          
+                            max: axisMax,        
+                            grid: { color: '#334155' }, 
+                            ticks: { 
+                                color: '#94a3b8', 
+                                stepSize: 10,
+                                callback: (v) => 'Age ' + v
+                            } 
+                        },
                         y: { 
+                            min: 0, 
+                            max: yMaxConstraint,
                             grid: { color: '#334155' }, 
                             ticks: { 
                                 color: '#94a3b8',
@@ -495,8 +698,7 @@
                 }
             });
         }
-        
-        // Push current numbers to parameters string on every UI interaction
+        updateButtonStates();
         updateURLParams();
     }
 
@@ -505,7 +707,8 @@
             box.value = slider.value;
             updateVisualization();
         });
-        box.addEventListener('input', () => {
+        box.addEventListener('change', () => {
+            if (box.value === "") box.value = slider.value;
             slider.value = box.value;
             updateVisualization();
         });
@@ -518,7 +721,10 @@
     linkInputs(inputSpending, boxSpending);
     linkInputs(inputGrowth, boxGrowth);
 
-    // Initial parsing call before first calculation render loop
+    boxAxisMin.addEventListener('change', updateVisualization);
+    boxAxisMax.addEventListener('change', updateVisualization);
+    boxYMax.addEventListener('change', updateVisualization);
+
     loadParamsFromURL();
     updateVisualization();
 </script>
