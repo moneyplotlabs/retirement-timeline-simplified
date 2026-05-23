@@ -458,11 +458,14 @@
                     </div>
                     <button class="btn-lock" id="btn-lock-y" title="Toggle vertical net worth bounds lock">Lock Current</button>
                 </div>
-                <!-- Capital Legacy Floor Row -->
-                <div class="advanced-row-y" style="margin-top: 8px;">
-                    <div class="control-group y-input-wrap">
-                        <label class="control-label">Desired Legacy Floor / Inheritance ($)</label>
-                        <input type="number" id="box-legacy-floor" step="50000" min="0" value="0" placeholder="$0 (Run portfolio to zero)">
+                <!-- Capital Legacy Floor Control Group -->
+                <div class="control-group" style="margin-top: 8px;">
+                    <label class="control-label" id="label-legacy-floor">Desired Legacy Floor: $0</label>
+                    <div class="interactive-row">
+                        <!-- Slider capped at $1M for safe exploration scale -->
+                        <input type="range" id="slider-legacy-floor" min="0" max="1000000" step="50000" value="0">
+                        <!-- Input box allows advanced targets up to $5M -->
+                        <input type="number" id="box-legacy-floor" class="manual-box" min="0" max="5000000" step="50000" value="0" placeholder="$">
                     </div>
                 </div>
             </div>
@@ -491,6 +494,7 @@
     const boxAxisMin = document.getElementById('box-axis-min');
     const boxAxisMax = document.getElementById('box-axis-max');
     const boxYMax = document.getElementById('box-y-max');
+    const sliderLegacyFloor = document.getElementById('slider-legacy-floor');
     const boxLegacyFloor = document.getElementById('box-legacy-floor');
     
     const btnLockX = document.getElementById('btn-lock-x');
@@ -713,11 +717,13 @@
         const c = parseFloat(boxSavings.value) || 0;
         const b = parseFloat(boxSpending.value) || 0;
         const r = (parseFloat(boxGrowth.value) || 0) / 100;
+        const floor = parseFloat(boxLegacyFloor.value) || 0;
 
         // Dynamic, zero-clutter inline label updates
         document.getElementById('label-principal').innerText = 'Starting Balance: ' + formatCurrency(p0);
         document.getElementById('label-savings').innerText = 'Annual Savings: ' + formatCurrency(c) + '/yr';
         document.getElementById('label-spending').innerText = 'Annual Retirement Spending: ' + formatCurrency(b) + '/yr';
+        document.getElementById('label-legacy-floor').innerText = 'Desired Legacy Floor: ' + formatCurrency(floor);
 
         const results = calculateTimeline(startAge, endAge, p0, c, b, r);
         computedPeakCache = results.peakNetWorth;
@@ -818,12 +824,32 @@
         });
     }
 
+    // Custom linking function for legacy bounds to preserve the wide input scale
+    function linkInputsLegacy(slider, box) {
+        slider.addEventListener('input', () => {
+            box.value = slider.value;
+            updateVisualization();
+        });
+        box.addEventListener('change', () => {
+            if (box.value === "") box.value = slider.value;
+            
+            let val = parseFloat(box.value);
+            if (val < 0) { val = 0; box.value = "0"; }
+            if (val > 5000000) { val = 5000000; box.value = "5000000"; }
+
+            // Slider visually clamps to $1M max, box retains full customized target value
+            slider.value = Math.max(0, Math.min(1000000, val));
+            updateVisualization();
+        });
+    }
+
     linkInputs(sliderStartAge, boxStartAge);
     linkInputs(sliderEndAge, boxEndAge);
     linkInputs(inputPrincipal, boxPrincipal);
     linkInputs(inputSavings, boxSavings);
     linkInputs(inputSpending, boxSpending);
     linkInputs(inputGrowth, boxGrowth);
+    linkInputsLegacy(sliderLegacyFloor, boxLegacyFloor);
 
     boxAxisMin.addEventListener('change', updateVisualization);
     boxAxisMax.addEventListener('change', updateVisualization);
