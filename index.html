@@ -211,7 +211,6 @@
             <div class="control-group">
                 <label class="control-label">Current Age</label>
                 <div class="interactive-row">
-                    <!-- Fixed Scale: 0 to 120 -->
                     <input type="range" id="slider-start-age" min="0" max="120" value="20">
                     <input type="number" id="box-start-age" class="manual-box" min="0" max="120" value="20">
                 </div>
@@ -220,7 +219,6 @@
             <div class="control-group">
                 <label class="control-label">Life Expectancy</label>
                 <div class="interactive-row">
-                    <!-- Fixed Scale: 0 to 120 -->
                     <input type="range" id="slider-end-age" min="0" max="120" value="95">
                     <input type="number" id="box-end-age" class="manual-box" min="0" max="120" value="95">
                 </div>
@@ -283,6 +281,44 @@
 
     let chartInstance = null;
     const formatCurrency = (num) => '$' + Math.round(num).toLocaleString();
+
+    // 1. DYNAMIC URL GENERATION
+    function updateURLParams() {
+        const params = new URLSearchParams();
+        params.set('startAge', boxStartAge.value);
+        params.set('endAge', boxEndAge.value);
+        params.set('principal', boxPrincipal.value);
+        params.set('savings', boxSavings.value);
+        params.set('spending', boxSpending.value);
+        params.set('growth', boxGrowth.value);
+        
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+        window.history.replaceState({}, '', newUrl);
+    }
+
+    // 2. PARSE INCOMING URL QUERY STRINGS
+    function loadParamsFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        
+        if (params.has('startAge')) {
+            boxStartAge.value = sliderStartAge.value = params.get('startAge');
+        }
+        if (params.has('endAge')) {
+            boxEndAge.value = sliderEndAge.value = params.get('endAge');
+        }
+        if (params.has('principal')) {
+            boxPrincipal.value = inputPrincipal.value = params.get('principal');
+        }
+        if (params.has('savings')) {
+            boxSavings.value = inputSavings.value = params.get('savings');
+        }
+        if (params.has('spending')) {
+            boxSpending.value = inputSpending.value = params.get('spending');
+        }
+        if (params.has('growth')) {
+            boxGrowth.value = inputGrowth.value = params.get('growth');
+        }
+    }
 
     function evaluateEndingBalance(w, totalHorizon, p0, c, b, r) {
         let balance = p0;
@@ -376,18 +412,14 @@
         let startAge = parseInt(boxStartAge.value) || 0;
         let endAge = parseInt(boxEndAge.value) || 95;
         
-        // Handle constraint enforcement seamlessly
         if (startAge >= endAge) {
             endAge = startAge + 1;
-            
-            // Limit absolute max cap to 120
             if(endAge > 120) {
                 endAge = 120;
                 startAge = 119;
                 boxStartAge.value = startAge;
                 sliderStartAge.value = startAge;
             }
-            
             boxEndAge.value = endAge;
             sliderEndAge.value = endAge;
         }
@@ -463,6 +495,9 @@
                 }
             });
         }
+        
+        // Push current numbers to parameters string on every UI interaction
+        updateURLParams();
     }
 
     function linkInputs(slider, box) {
@@ -483,6 +518,8 @@
     linkInputs(inputSpending, boxSpending);
     linkInputs(inputGrowth, boxGrowth);
 
+    // Initial parsing call before first calculation render loop
+    loadParamsFromURL();
     updateVisualization();
 </script>
 
