@@ -8,6 +8,10 @@ mp_blue  = '#3B82F6'
 mp_green = '#10B981'
 mp_red   = '#EF4444'
 
+# Structural Neutrals for Environmental Comparison
+mp_grey       = '#64748B'
+mp_light_grey = '#CBD5E1'
+
 plt.rcParams.update({
     'font.size': 10,
     'axes.labelsize': 11,
@@ -28,7 +32,7 @@ A_end = 95
 H = A_end - A_start  # Horizon = 75 years
 
 A_0 = 0               # Initial Balance
-L = 0           # Desired Legacy Floor (Actuary-aligned L notation)
+L = 0                 # Desired Legacy Floor (Actuary-aligned L notation)
 c = 10000            # Annual Savings Flow
 b = 50000            # Annual Retirement Budget
 
@@ -60,7 +64,7 @@ ax1.text((A_start + age_retire_linear)/2, 75000, f'Working Phase\n$w = {w_linear
 ax1.annotate('', xy=(age_retire_linear, 50000), xytext=(A_end, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
 ax1.text((age_retire_linear + A_end)/2, 75000, f'Retirement Phase\n$f = {H-w_linear:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
 
-ax1.set_title('The Linear Intersection Baseline ($r=0\\%$)', color=mp_dark, weight='bold', pad=14)
+ax1.set_title('The Linear Intersection Baseline ($r=0\%$)', color=mp_dark, weight='bold', pad=14)
 ax1.set_xlabel('Age (Years)', color=mp_dark, weight='bold')
 ax1.set_ylabel('Net Worth ($)', color=mp_dark, weight='bold')
 ax1.set_xlim(A_start, A_end)
@@ -72,8 +76,9 @@ for spine in ['left', 'bottom']: ax1.spines[spine].set_color('#cbd5e1')
 plt.savefig('visual-assets/linear_plot.pdf', format='pdf', bbox_inches='tight')
 plt.close()
 
+
 # =========================================================================
-# GRAPH 2: THE EXPONENTIAL ENGINE (r = 5%)
+# GRAPH 2: THE EXPONENTIAL ENGINE (r = 3%)
 # =========================================================================
 r = 0.03
 numerator_inner = (r * A_0 + c) * ((1 + r)**H) + b * (1 + r) - r * L
@@ -128,4 +133,70 @@ for spine in ['left', 'bottom']: ax2.spines[spine].set_color('#cbd5e1')
 plt.savefig('visual-assets/exponential_plot.pdf', format='pdf', bbox_inches='tight')
 plt.close()
 
-print("Execution complete. Both math-verified plots generated.")
+
+# =========================================================================
+# GRAPH 3: ENVIRONMENT MACRO COMPARISON (3% vs 0% vs -3%)
+# =========================================================================
+r_neg = -0.03
+num_neg = (r_neg * A_0 + c) * ((1 + r_neg)**H) + b * (1 + r_neg) - r_neg * L
+den_neg = c + b * (1 + r_neg)
+w_negative = H - (np.log(num_neg / den_neg) / np.log(1 + r_neg))
+age_retire_neg = A_start + w_negative
+
+nw_neg_curve = []
+for age in ages_eval:
+    t = age - A_start
+    if t <= w_negative:
+        val = A_0 * ((1 + r_neg)**t) + c * (((1 + r_neg)**t - 1) / r_neg)
+    else:
+        A_w_neg = A_0 * ((1 + r_neg)**w_negative) + c * (((1 + r_neg)**w_negative - 1) / r_neg)
+        t_ret = t - w_negative
+        val = A_w_neg * ((1 + r_neg)**t_ret) - b * (((1 + r_neg)**(t_ret + 1) - (1 + r_neg)) / r_neg)
+    nw_neg_curve.append(val)
+
+fig3, ax3 = plt.subplots(figsize=(7.5, 4.5), layout='tight')
+
+
+# Plot foreground optimized brand engine portfolio path
+ax3.plot(ages_eval[mask_acc], np.array(nw_exp)[mask_acc], color=mp_green, linewidth=2.5, label='+3% Real Growth (Accumulation Phase)')
+ax3.plot(ages_eval[mask_dep], np.array(nw_exp)[mask_dep], color=mp_red, linewidth=2.5, label='+3% Real Growth (Depletion Phase)')
+
+# Plot background macro reference environments
+ax3.plot(ages_eval, nw_lin_curve := [A_0 + c * (a - A_start) if (a - A_start) <= w_linear else L + b * (A_end - a) for a in ages_eval], 
+         color=mp_grey, linewidth=1.75, linestyle='--', label='0% Real Growth (Keeping up with inflation)')
+ax3.plot(ages_eval, nw_neg_curve, 
+         color=mp_light_grey, linewidth=1.75, linestyle=':', label='-3% Real Growth (Checking account with 0% rate, losing to 3% inflation)')
+
+# Highlight peak timeline transitions across environments
+A_w_neg_peak = nw_neg_curve[np.argmin(np.abs((ages_eval - A_start) - w_negative))]
+ax3.plot(age_retire_exp, A_w_exponential, marker='o', color=mp_dark, markersize=7, zorder=5)
+ax3.plot(age_retire_linear, A_w_linear, marker='o', color=mp_grey, markersize=5, zorder=4)
+ax3.plot(age_retire_neg, A_w_neg_peak, marker='o', color=mp_light_grey, markersize=5, zorder=4)
+
+# Visual Callout Annotations
+ax3.annotate(f'Asset Peak\nAge {age_retire_exp:.1f}\n${int(A_w_exponential):,}', 
+             xy=(age_retire_exp, A_w_exponential), xytext=(age_retire_exp - 20, A_w_exponential - 110000),
+             color=mp_dark, weight='bold', size=8.5, arrowprops=dict(arrowstyle='->', color=mp_dark, lw=0.8))
+
+ax3.annotate(f'Age {age_retire_linear:.1f}', xy=(age_retire_linear, A_w_linear), xytext=(age_retire_linear + 2, A_w_linear + 8000),
+             color=mp_grey, size=8.5, weight='bold')
+ax3.annotate(f'Age {age_retire_neg:.1f}', xy=(age_retire_neg, A_w_neg_peak), xytext=(age_retire_neg + 2, A_w_neg_peak - 25000),
+             color=mp_grey, size=8.5)
+
+# Formatting Framework
+ax3.set_title('Trajectory Comparison', color=mp_dark, weight='bold', pad=14)
+ax3.set_xlabel('Age (Years)', color=mp_dark, weight='bold')
+ax3.set_ylabel('Net Worth ($)', color=mp_dark, weight='bold')
+ax3.set_xlim(A_start, A_end)
+ax3.set_ylim(0, 1100000)
+ax3.get_yaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
+ax3.grid(True)
+ax3.legend(loc='center left', frameon=True, facecolor='#ffffff', edgecolor='#e2e8f0', fontsize=8.2)
+
+for spine in ['top', 'right']: ax3.spines[spine].set_visible(False)
+for spine in ['left', 'bottom']: ax3.spines[spine].set_color('#cbd5e1')
+
+plt.savefig('visual-assets/comparison_plot.pdf', format='pdf', bbox_inches='tight')
+plt.close()
+
+print("Execution complete. All 3 math-verified whitepaper files successfully outputted to visual-assets/")
