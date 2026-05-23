@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Money Plot Labs - Retirement Timeline Calculator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-green: #10b981;
+            --accent-blue: #3b82f6;
+            --border: #334155;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1050px;
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+        }
+
+        h2 {
+            margin-top: 0;
+            font-weight: 600;
+            font-size: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 12px;
+            color: var(--text-main);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-card {
+            background-color: rgba(15, 23, 42, 0.4);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .metric-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--accent-green);
+        }
+
+        .metric-card.blue .metric-value {
+            color: var(--accent-blue);
+        }
+
+        .layout-split {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+        }
+
+        @media (min-width: 900px) {
+            .layout-split {
+                grid-template-columns: 1.1fr 1fr;
+            }
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+            background-color: rgba(15, 23, 42, 0.2);
+            border-radius: 8px;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid var(--border);
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background-color: rgba(15, 23, 42, 0.3);
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            max-height: 550px;
+            overflow-y: auto;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-main);
+        }
+
+        .input-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .input-row .control-group {
+            flex: 1;
+        }
+
+        .interactive-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .interactive-row input[type="range"] {
+            flex: 1;
+        }
+
+        .interactive-row .manual-box {
+            width: 110px;
+            flex-shrink: 0;
+            text-align: left;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: var(--border);
+            border-radius: 5px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+
+        input[type="number"] {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            outline: none;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        input[type="number"]:focus {
+            border-color: var(--accent-blue);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Money Plot: The Pure Math of Freedom</h2>
+    
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-label">Working Years Needed</div>
+            <div id="metric-work-years" class="metric-value">0.0 Years</div>
+        </div>
+        <div class="metric-card blue">
+            <div class="metric-label">Retirement Age Target</div>
+            <div id="metric-retire-age" class="metric-value">Age --</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Peak Nest Egg Needed</div>
+            <div id="metric-peak-nw" class="metric-value">$0</div>
+        </div>
+    </div>
+
+    <div class="layout-split">
+        <div class="chart-container">
+            <canvas id="timelineChart"></canvas>
+        </div>
+
+        <div class="controls">
+            <div class="input-row">
+                <div class="control-group">
+                    <label class="control-label">Current Age</label>
+                    <input type="number" id="input-start-age" min="0" max="90" value="20">
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Life Expectancy</label>
+                    <input type="number" id="input-end-age" min="40" max="120" value="95">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">Starting Balance ($)</label>
+                <div class="interactive-row">
+                    <input type="range" id="input-principal" min="0" max="1000000" step="5000" value="0">
+                    <input type="number" id="box-principal" class="manual-box" min="0" step="any" value="0" placeholder="$">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">Annual Savings ($/yr)</label>
+                <div class="interactive-row">
+                    <input type="range" id="input-savings" min="0" max="100000" step="1000" value="10000">
+                    <input type="number" id="box-savings" class="manual-box" min="0" step="any" value="10000">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">Annual Retirement Spending ($/yr)</label>
+                <div class="interactive-row">
+                    <input type="range" id="input-spending" min="5000" max="100000" step="1000" value="50000">
+                    <input type="number" id="box-spending" class="manual-box" min="0" step="any" value="50000">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">Real Growth Rate (%)</label>
+                <div class="interactive-row">
+                    <input type="range" id="input-growth" min="0.0" max="10.0" step="0.1" value="1.0">
+                    <input type="number" id="box-growth" class="manual-box" step="any" value="3.0">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const inputStartAge = document.getElementById('input-start-age');
+    const inputEndAge = document.getElementById('input-end-age');
+    
+    // Sliders
+    const inputPrincipal = document.getElementById('input-principal');
+    const inputSavings = document.getElementById('input-savings');
+    const inputSpending = document.getElementById('input-spending');
+    const inputGrowth = document.getElementById('input-growth');
+
+    // Number Boxes
+    const boxPrincipal = document.getElementById('box-principal');
+    const boxSavings = document.getElementById('box-savings');
+    const boxSpending = document.getElementById('box-spending');
+    const boxGrowth = document.getElementById('box-growth');
+
+    const mWorkYears = document.getElementById('metric-work-years');
+    const mRetireAge = document.getElementById('metric-retire-age');
+    const mPeakNw = document.getElementById('metric-peak-nw');
+
+    let chartInstance = null;
+    const formatCurrency = (num) => '$' + Math.round(num).toLocaleString();
+
+    function evaluateEndingBalance(w, totalHorizon, p0, c, b, r) {
+        let balance = p0;
+        for (let year = 1; year <= totalHorizon; year++) {
+            if (year <= w) {
+                balance = balance * (1 + r) + c;
+            } else {
+                balance = balance * (1 + r) - b;
+            }
+        }
+        return balance;
+    }
+
+    function calculateTimeline(startAge, endAge, p0, c, b, r) {
+        const totalHorizon = endAge - startAge;
+        let w = 0;
+
+        if (totalHorizon <= 0) {
+            return { workingYears: 0, retirementAge: startAge, peakNetWorth: p0, labels: [], accumulationData: [], depletionData: [] };
+        }
+
+        if (r === 0) {
+            w = (b * totalHorizon - p0) / (c + b);
+        } else {
+            const compoundHorizon = Math.pow(1 + r, totalHorizon);
+            const numerator = (r * p0 + c) * compoundHorizon + b;
+            const denominator = c + b;
+            
+            if (numerator / denominator <= 0) {
+                w = 0;
+            } else {
+                w = totalHorizon - (Math.log(numerator / denominator) / Math.log(1 + r));
+            }
+        }
+
+        w = Math.max(0, Math.min(totalHorizon, w));
+        if (isNaN(w)) w = totalHorizon;
+
+        const labels = [];
+        const accumulationData = [];
+        const depletionData = [];
+        
+        let peakNetWorth = 0;
+        if (r === 0) {
+            peakNetWorth = p0 + (c * w);
+        } else {
+            peakNetWorth = p0 * Math.pow(1 + r, w) + c * (Math.pow(1 + r, w) - 1) / r;
+        }
+
+        for (let i = 0; i <= totalHorizon; i++) {
+            labels.push('Age ' + (startAge + i));
+
+            if (i <= w) {
+                let bal = 0;
+                if (r === 0) {
+                    bal = p0 + (c * i);
+                } else {
+                    bal = p0 * Math.pow(1 + r, i) + c * (Math.pow(1 + r, i) - 1) / r;
+                }
+                accumulationData.push(bal);
+                depletionData.push(null);
+            } else {
+                const yearsRetired = i - w;
+                let bal = 0;
+                if (r === 0) {
+                    bal = peakNetWorth - (b * yearsRetired);
+                } else {
+                    bal = peakNetWorth * Math.pow(1 + r, yearsRetired) - b * (Math.pow(1 + r, yearsRetired) - 1) / r;
+                }
+                if (accumulationData[accumulationData.length - 1] !== null) {
+                    depletionData.push(peakNetWorth);
+                    accumulationData.push(null);
+                }
+                
+                accumulationData.push(null);
+                depletionData.push(Math.max(0, bal));
+            }
+        }
+
+        return {
+            workingYears: w,
+            retirementAge: startAge + w,
+            peakNetWorth: peakNetWorth,
+            labels: labels,
+            accumulationData: accumulationData,
+            depletionData: depletionData
+        };
+    }
+
+    function updateVisualization() {
+        const startAge = parseInt(inputStartAge.value) || 0;
+        const endAge = parseInt(inputEndAge.value) || 95;
+        
+        const p0 = parseFloat(boxPrincipal.value) || 0;
+        const c = parseFloat(boxSavings.value) || 0;
+        const b = parseFloat(boxSpending.value) || 0;
+        const r = (parseFloat(boxGrowth.value) || 0) / 100;
+
+        if (startAge >= endAge) return;
+
+        const results = calculateTimeline(startAge, endAge, p0, c, b, r);
+
+        mWorkYears.innerText = results.workingYears.toFixed(1) + ' Years';
+        mRetireAge.innerText = results.workingYears === (endAge - startAge) && evaluateEndingBalance(endAge - startAge, endAge - startAge, p0, c, b, r) < 0 ? 'Never' : 'Age ' + results.retirementAge.toFixed(1);
+        mPeakNw.innerText = formatCurrency(results.peakNetWorth);
+
+        if (chartInstance) {
+            chartInstance.data.labels = results.labels;
+            chartInstance.data.datasets[0].data = results.accumulationData;
+            chartInstance.data.datasets[1].data = results.depletionData;
+            chartInstance.update('none');
+        } else {
+            const ctx = document.getElementById('timelineChart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: results.labels,
+                    datasets: [
+                        {
+                            label: 'Accumulation Phase',
+                            data: results.accumulationData,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                            fill: true,
+                            tension: 0.1,
+                            borderWidth: 3,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Depletion Phase',
+                            data: results.depletionData,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                            fill: true,
+                            tension: 0.1,
+                            borderWidth: 3,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#f8fafc' } },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: (context) => context.raw !== null ? context.dataset.label + ': ' + formatCurrency(context.raw) : null
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
+                        y: { 
+                            grid: { color: '#334155' }, 
+                            ticks: { 
+                                color: '#94a3b8',
+                                callback: (v) => v >= 1000000 ? '$' + (v / 1000000).toFixed(1) + 'M' : v >= 1000 ? '$' + (v / 1000) + 'k' : '$' + v
+                            } 
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    function linkInputs(slider, box) {
+        slider.addEventListener('input', () => {
+            box.value = slider.value;
+            updateVisualization();
+        });
+        box.addEventListener('input', () => {
+            slider.value = box.value;
+            updateVisualization();
+        });
+    }
+
+    linkInputs(inputPrincipal, boxPrincipal);
+    linkInputs(inputSavings, boxSavings);
+    linkInputs(inputSpending, boxSpending);
+    linkInputs(inputGrowth, boxGrowth);
+
+    [inputStartAge, inputEndAge].forEach(el => el.addEventListener('input', updateVisualization));
+
+    updateVisualization();
+</script>
+
+</body>
+</html>
