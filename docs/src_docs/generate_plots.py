@@ -27,14 +27,14 @@ plt.rcParams.update({
 os.makedirs('visual-assets', exist_ok=True)
 
 # --- Exact Core Variables ---
-A_start = 20
+A_start = 25
 A_end = 95
 H = A_end - A_start  # Horizon = 75 years
 
 A_0 = 0               # Initial Balance
 L = 0                 # Desired Legacy Floor (Actuary-aligned L notation)
-s = 10000            # Annual Savings
-c = 50000            # Annual Retirement Consumption
+s = 15000            # Annual Savings
+c = 45000            # Annual Retirement Consumption
 
 # =========================================================================
 # GRAPH 1: THE LINEAR BASELINE (r = 0%)
@@ -56,8 +56,8 @@ ax1.annotate(f'Peak $A_w$\nAge {age_retire_linear:.1f}\n${int(A_w_linear):,}',
              xy=(age_retire_linear, A_w_linear), xytext=(age_retire_linear, A_w_linear + 140000),
              color=mp_dark, weight='bold', ha='center', arrowprops=dict(arrowstyle='->', color=mp_dark, lw=1))
 
-ax1.text(50, 280000, f'Slope = +$s$\n(${s:,}/yr)', color=mp_green, weight='bold', ha='center', rotation=22)
-ax1.text(85, 180000, f'Slope = -$c$\n(-${c:,}/yr)', color=mp_red, weight='bold', ha='center', rotation=-60)
+ax1.text(55, 240000, f'Slope = +$s$\n(${s:,}/yr)', color=mp_green, weight='bold', ha='center', rotation=27)
+ax1.text(83, 220000, f'Slope = -$c$\n(-${c:,}/yr)', color=mp_red, weight='bold', ha='center', rotation=-55)
 
 ax1.annotate('', xy=(A_start, 50000), xytext=(age_retire_linear, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
 ax1.text((A_start + age_retire_linear)/2, 75000, f'Working Phase\n$w = {w_linear:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
@@ -113,8 +113,8 @@ ax2.annotate(f'Peak $A_w$\nAge {age_retire_exp:.1f}\n${int(A_w_exponential):,}',
              color=mp_dark, weight='bold', ha='center', arrowprops=dict(arrowstyle='->', color=mp_dark, lw=1))
 
 # Dynamic curve rate tags (differential calculus markers)
-ax2.text(33, 220000, r'$\frac{dA}{dt} = rA + s$', color=mp_green, weight='bold', ha='center', fontsize=11, rotation=22)
-ax2.text(75, 450000, r'$\frac{dA}{dt} = rA - c(1+r)$', color=mp_red, weight='bold', ha='center', fontsize=11, rotation=-50)
+ax2.text(37, 220000, r'$\frac{dA}{dt} = rA + s$', color=mp_green, weight='bold', ha='center', fontsize=11, rotation=35)
+ax2.text(78, 330000, r'$\frac{dA}{dt} = rA - c(1+r)$', color=mp_red, weight='bold', ha='center', fontsize=11, rotation=-45)
 
 ax2.annotate('', xy=(A_start, 50000), xytext=(age_retire_exp, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
 ax2.text((A_start + age_retire_exp)/2, 85000, f'Working Phase\n$w = {w_exponential:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
