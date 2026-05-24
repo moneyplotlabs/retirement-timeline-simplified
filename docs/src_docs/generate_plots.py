@@ -126,33 +126,51 @@ for age in ages_eval:
 A_w_exponential = nw_exp[np.argmin(np.abs((ages_eval - A_start) - w_exponential))]
 
 fig2, ax2 = plt.subplots(figsize=(7, 4.2), layout='tight')
+ax2b = ax2.twinx()
 mask_acc = ages_eval - A_start <= w_exponential
 mask_dep = ages_eval - A_start >= w_exponential
 
-ax2.plot(ages_eval[mask_acc], np.array(nw_exp)[mask_acc], color=mp_green, linewidth=3, label='Exponential Accumulation')
-ax2.plot(ages_eval[mask_dep], np.array(nw_exp)[mask_dep], color=mp_red, linewidth=3, label='Exponential Depletion')
+split_idx = int(np.floor(w_exponential)) + 1
+capital_yield = [nw_exp * r for nw_exp in nw_exp[:split_idx]]
+capital_yield += [(nw_exp - c) * r for nw_exp in nw_exp[split_idx:]]
+labor_stream = [I if age <= age_retire_exp else 0 for age in ages_eval]
+labor_stream = [I for _ in nw_exp[:split_idx]]
+labor_stream += [0 for _ in nw_exp[split_idx:]]
+# Axis 1: Background Cash Flow Velocities (Left Axis)
+ages_acc = ages_lin[:split_idx]
+ages_dep = ages_lin[split_idx-1:]
+income_profile = [I if age - A_start <= w_exponential else 0 for age in nw_exp]
+ax2.step(ages_lin, income_profile, where='mid', color=mp_dark, linestyle='--', linewidth=1.5, alpha=0.6, label='Active Earned Income ($I$)')
+ax2.bar(ages_acc, [s]*len(ages_acc), bottom=[c]*len(ages_acc), color=mp_green, alpha=0.15, width=0.6, label='Savings Inflow ($s$)')
+ax2.bar(ages_lin, capital_yield, bottom=labor_stream, color=mp_purple, alpha=0.15, width=0.6, label='Yield ($A_t \\cdot r$)')
+ax2.bar(ages_lin, [c]*len(ages_lin), bottom=[0]*len(ages_lin), color=mp_red, alpha=0.15, width=0.6, label='Consumption Outflow ($c$)')
 
-ax2.plot(age_retire_exp, A_w_exponential, marker='o', color=mp_dark, markersize=8, zorder=5)
-ax2.annotate(f'Peak $A_w$\nAge {age_retire_exp:.1f}\n${int(A_w_exponential):,}', 
+ax2b.plot(ages_eval[mask_acc], np.array(nw_exp)[mask_acc], color=mp_green, linewidth=3, label='Exponential Accumulation')
+ax2b.plot(ages_eval[mask_dep], np.array(nw_exp)[mask_dep], color=mp_red, linewidth=3, label='Exponential Depletion')
+
+ax2b.plot(age_retire_exp, A_w_exponential, marker='o', color=mp_dark, markersize=8, zorder=5)
+ax2b.annotate(f'Peak $A_w$\nAge {age_retire_exp:.1f}\n${int(A_w_exponential):,}', 
              xy=(age_retire_exp, A_w_exponential), xytext=(age_retire_exp - 20, A_w_exponential - 100000),
              color=mp_dark, weight='bold', ha='center', arrowprops=dict(arrowstyle='->', color=mp_dark, lw=1))
 
 # Dynamic curve rate tags (differential calculus markers)
-ax2.text(37, 220000, r'$\frac{dA}{dt} = rA + s$', color=mp_green, weight='bold', ha='center', fontsize=11, rotation=35)
-ax2.text(78, 330000, r'$\frac{dA}{dt} = rA - c(1+r)$', color=mp_red, weight='bold', ha='center', fontsize=11, rotation=-45)
+ax2b.text(37, 220000, r'$\frac{dA}{dt} = rA + s$', color=mp_green, weight='bold', ha='center', fontsize=11, rotation=35)
+ax2b.text(78, 330000, r'$\frac{dA}{dt} = rA - c(1+r)$', color=mp_red, weight='bold', ha='center', fontsize=11, rotation=-45)
 
-ax2.annotate('', xy=(A_start, 50000), xytext=(age_retire_exp, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
-ax2.text((A_start + age_retire_exp)/2, 85000, f'Working Phase\n$w = {w_exponential:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
-ax2.annotate('', xy=(age_retire_exp, 50000), xytext=(A_end, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
-ax2.text((age_retire_exp + A_end)/2, 85000, f'Retirement Phase\n$f = {H-w_exponential:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
+ax2b.annotate('', xy=(A_start, 50000), xytext=(age_retire_exp, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
+ax2b.text((A_start + age_retire_exp)/2, 85000, f'Working Phase\n$w = {w_exponential:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
+ax2b.annotate('', xy=(age_retire_exp, 50000), xytext=(A_end, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
+ax2b.text((age_retire_exp + A_end)/2, 85000, f'Retirement Phase\n$f = {H-w_exponential:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
 
 ax2.set_title(f'The Exponential Compounding Trajectory ($r={int(r*100)}\\%$)', color=mp_dark, weight='bold', pad=14)
 ax2.set_xlabel('Age (Years)', color=mp_dark, weight='bold')
-ax2.set_ylabel('Net Worth ($)', color=mp_dark, weight='bold')
+ax2b.set_ylabel('Net Worth ($)', color=mp_dark, weight='bold')
 ax2.set_xlim(A_start, A_end)
-ax2.set_ylim(0, 1100000)
+ax2.set_ylim(0, 100000)
+ax2b.set_ylim(0, 1100000)
 ax2.get_yaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
-ax2.grid(True)
+ax2b.get_yaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
+ax2b.grid(True)
 for spine in ['top', 'right']: ax2.spines[spine].set_visible(False)
 for spine in ['left', 'bottom']: ax2.spines[spine].set_color('#cbd5e1')
 plt.savefig('visual-assets/exponential_plot.pdf', format='pdf', bbox_inches='tight')
