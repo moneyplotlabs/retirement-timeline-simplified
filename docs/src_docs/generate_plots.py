@@ -7,6 +7,7 @@ mp_dark  = '#0F172A'
 mp_blue  = '#3B82F6'
 mp_green = '#10B981'
 mp_red   = '#EF4444'
+mp_purple = '#8B5CF6'  # Capital Yield Component (A_t * r)
 
 # Structural Neutrals for Environmental Comparison
 mp_grey       = '#64748B'
@@ -35,10 +36,12 @@ A_0 = 0               # Initial Balance
 L = 0                 # Desired Legacy Floor (Actuary-aligned L notation)
 s = 15000            # Annual Savings
 c = 45000            # Annual Retirement Consumption
+I = s + c            # Annual Earned Income
 
 # =========================================================================
 # GRAPH 1: THE LINEAR BASELINE (r = 0%)
 # =========================================================================
+r = 0.0
 w_linear = (c * H + L - A_0) / (s + c)
 age_retire_linear = A_start + w_linear
 A_w_linear = A_0 + s * w_linear
@@ -46,31 +49,53 @@ A_w_linear = A_0 + s * w_linear
 ages_lin = np.arange(A_start, A_end + 1)
 nw_lin = [A_0 + s * t if t <= w_linear else L + c * (H - t) for t in (ages_lin - A_start)]
 
-fig1, ax1 = plt.subplots(figsize=(7, 4.2), layout='tight')
+# --- Example Segment for the Exponential Plot Overlay ---
+fig, ax1 = plt.subplots(figsize=(7, 4.2), layout='tight')
 split_idx = int(np.floor(w_linear)) + 1
-ax1.plot(ages_lin[:split_idx], nw_lin[:split_idx], color=mp_green, linewidth=3, label='Linear Accumulation')
-ax1.plot(ages_lin[split_idx-1:], nw_lin[split_idx-1:], color=mp_red, linewidth=3, label='Linear Depletion')
+capital_yield = [nw_lin * r for nw_lin in nw_lin[:split_idx]]
+capital_yield += [(nw_lin - c) * r for nw_lin in nw_lin[split_idx:]]
+# Axis 1: Background Cash Flow Velocities (Left Axis)
+ages_acc = ages_lin[:split_idx]
+ages_dep = ages_lin[split_idx-1:]
+income_profile = [I if age <= age_retire_linear else 0 for age in ages_lin]
+ax1.step(ages_lin, income_profile, where='mid', color=mp_dark, linestyle='--', linewidth=1.5, alpha=0.6, label='Active Earned Income ($I$)')
+ax1.bar(ages_acc, [s]*len(ages_acc), bottom=[c]*len(ages_acc), color=mp_green, alpha=0.15, width=0.6, label='Savings Inflow ($s$)')
+#ax1.bar(ages_lin, capital_yield, bottom=[s+c]*len(ages_lin), color=mp_purple, alpha=0.15, width=0.6, label='Yield ($A_t \\cdot r$)')
+ax1.bar(ages_lin, [c]*len(ages_lin), bottom=[0]*len(ages_lin), color=mp_red, alpha=0.15, width=0.6, label='Consumption Outflow ($c$)')
 
-ax1.plot(age_retire_linear, A_w_linear, marker='o', color=mp_dark, markersize=8, zorder=5)
-ax1.annotate(f'Peak $A_w$\nAge {age_retire_linear:.1f}\n${int(A_w_linear):,}', 
-             xy=(age_retire_linear, A_w_linear), xytext=(age_retire_linear, A_w_linear + 140000),
+ax1.set_ylabel('Annual Flow Velocity ($/yr)', color=mp_grey)
+ax1.tick_params(axis='y', labelcolor=mp_grey)
+
+# Axis 2: Foreground Net Worth Trajectory (Right Axis)
+ax2 = ax1.twinx()
+ax2.plot(ages_acc, nw_lin[:split_idx], color=mp_green, linewidth=3, label='Accumulation Phase Net Worth')
+ax2.plot(ages_dep, nw_lin[split_idx-1:], color=mp_red, linewidth=3, label='Decumulation Phase Net Worth')
+
+ax2.plot(age_retire_linear, A_w_linear, marker='o', color=mp_dark, markersize=8, zorder=5)
+ax2.annotate(f'Peak $A_w$\nAge {age_retire_linear:.1f}\n${int(A_w_linear):,}', 
+             xy=(age_retire_linear, A_w_linear), xytext=(age_retire_linear + 10, A_w_linear - 10000),
              color=mp_dark, weight='bold', ha='center', arrowprops=dict(arrowstyle='->', color=mp_dark, lw=1))
 
-ax1.text(55, 240000, f'Slope = +$s$\n(${s:,}/yr)', color=mp_green, weight='bold', ha='center', rotation=27)
-ax1.text(83, 220000, f'Slope = -$c$\n(-${c:,}/yr)', color=mp_red, weight='bold', ha='center', rotation=-55)
+ax2.text(55, 240000, f'Slope = +$s$\n(${s:,}/yr)', color=mp_green, weight='bold', ha='center', rotation=27)
+ax2.text(83, 220000, f'Slope = -$c$\n(-${c:,}/yr)', color=mp_red, weight='bold', ha='center', rotation=-55)
 
-ax1.annotate('', xy=(A_start, 50000), xytext=(age_retire_linear, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
-ax1.text((A_start + age_retire_linear)/2, 75000, f'Working Phase\n$w = {w_linear:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
-ax1.annotate('', xy=(age_retire_linear, 50000), xytext=(A_end, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
-ax1.text((age_retire_linear + A_end)/2, 75000, f'Retirement Phase\n$f = {H-w_linear:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
+ax2.annotate('', xy=(A_start, 50000), xytext=(age_retire_linear, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
+ax2.text((A_start + age_retire_linear)/2, 75000, f'Working Phase\n$w = {w_linear:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
+ax2.annotate('', xy=(age_retire_linear, 50000), xytext=(A_end, 50000), arrowprops=dict(arrowstyle='<->', color=mp_dark, lw=1))
+ax2.text((age_retire_linear + A_end)/2, 75000, f'Retirement Phase\n$f = {H-w_linear:.1f}$ yrs', color=mp_dark, ha='center', weight='bold', fontsize=9)
 
-ax1.set_title('The Linear Intersection Baseline ($r=0\%$)', color=mp_dark, weight='bold', pad=14)
+ax1.set_title('The Linear Intersection Baseline ($r=0\\%$)', color=mp_dark, weight='bold', pad=14)
 ax1.set_xlabel('Age (Years)', color=mp_dark, weight='bold')
-ax1.set_ylabel('Net Worth ($)', color=mp_dark, weight='bold')
+ax2.set_ylabel('Net Worth ($)', color=mp_dark, weight='bold')
 ax1.set_xlim(A_start, A_end)
-ax1.set_ylim(0, 1100000)
+ax1.set_ylim(0, 100000)
+ax2.set_ylim(0, 1010000)
 ax1.get_yaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
+ax2.get_yaxis().set_major_formatter(plt.FuncFormatter(lambda x, loc: "{:,}".format(int(x))))
 ax1.grid(True)
+lines1, labels1 = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', frameon=True, edgecolor='#e2e8f0', fontsize=8.5)
 for spine in ['top', 'right']: ax1.spines[spine].set_visible(False)
 for spine in ['left', 'bottom']: ax1.spines[spine].set_color('#cbd5e1')
 plt.savefig('visual-assets/linear_plot.pdf', format='pdf', bbox_inches='tight')
