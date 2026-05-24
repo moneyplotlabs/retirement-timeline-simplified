@@ -57,7 +57,7 @@
         \item $c$: Annual Cash Savings Flow during working years (\$)
         \item $b$: Annual Retirement Budget Consumption (\$)
         \item $L$: Desired Capital Legacy Floor / Inheritance Remaining at Death (\$)
-        \item $r$: Real Growth Rate adjusted for inflation (expressed as a decimal)
+        \item $r$: Real Growth Rate adjusted for inflation
         \item $w$: Accumulation Phase duration (Working Years)
         \item $f$: Depletion Phase duration (Retirement Years)
     \end{itemize}
@@ -65,52 +65,53 @@
     ---
     
     \section{The Linear Baseline Case ($r = 0\%$)}
-    Before introducing the compounding curves of financial markets, we establish an intuitive baseline by assuming real asset growth perfectly tracks inflation ($r = 0\%$). In this environment, wealth accumulates and depletes along perfectly straight lines, making it easy to see how the timelines cross.
     % =========================================================================
     % SECTION: PLOT 1 (LINEAR INTERSECTION BASELINE)
     % =========================================================================
     \begin{figure}[H]
     \centering
     \includegraphics[width=12cm, height=6cm]{linear_plot.pdf}
-    \caption{The straight-line boundary crossover mapping where $r=0\%$. Assets accumulate smoothly via \textcolor{mpgreen}{labor} and deplete symmetrically via \textcolor{mpred}{consumption} until hitting the legacy boundary.}
+    \caption{The straight-line boundary crossover mapping where $r =0\%$. Assets accumulate smoothly via \textcolor{mpgreen}{labor} and deplete symmetrically via \textcolor{mpred}{consumption} until hitting the legacy boundary.}
     \label{fig:linear_plot}
     \end{figure}
+    Before introducing the compounding curves of financial markets, we establish an intuitive baseline by assuming real asset growth perfectly tracks inflation ($r = 0\%$). In this environment, wealth accumulates and depletes along perfectly straight lines, making it easy to see how the timelines cross. For simplicity we also assume a zero starting balance ($A_0 = 0$) and no remaining inheritance ($L = 0$).
+
     
     \subsection{The First-Principles Equations}
     During the working phase, the accumulation of assets grows linearly from our starting balance $A_0$ by injecting our cash savings flow $c$ at the end of each year for $w$ years:
     \begin{equation}
-    \text{Peak Assets} = A_0 + c \cdot w
+    \text{Peak Assets} = c \cdot w
     \end{equation}
     
-    Upon entering retirement, the accumulation engine shuts off and the depletion engine takes over. The capital depletion loop draws down our peak nest egg by a flat budget spending block $b$ each year for the remaining $f$ retirement years ($H - w$) until landing exactly on our target legacy floor $L$:
+    Upon entering retirement, the accumulation engine shuts off and the depletion engine takes over. The capital depletion loop draws down our peak nest egg by a flat budget spending $b$ each year for the remaining $f$ retirement years ($H - w$) until landing exactly on our target legacy floor $L$:
     \begin{equation}
-    \text{Peak Assets Required} = L + b \cdot (H - w)
+    \text{Peak Assets Required} = b \cdot f
     \end{equation}
     
     \subsection{The Closed-Form Linear Solution}
     To find the precise year where working ends and retirement begins, we set the asset accumulation equation equal to the asset depletion requirement:
     \begin{equation}
-    A_0 + c \cdot w = b \cdot (H - w) + L
+    c \cdot w = b \cdot f
     \end{equation}
-    
-    Distributing the retirement consumption $b$ across the timeline parameters yields:
+
+    Substitute $f$ with $(H-w)$ and distributing the retirement consumption $b$ across the timeline parameters yields:
     \begin{equation}
-    A_0 + c \cdot w = b \cdot H - b \cdot w + L
+    c \cdot w = b \cdot H - b \cdot w
     \end{equation}
     
     Grouping all terms containing our target variable $w$ onto the left-hand side:
     \begin{equation}
-    c \cdot w + b \cdot w = b \cdot H + L - A_0
+    c \cdot w + b \cdot w = b \cdot H
     \end{equation}
     
     Factoring out $w$ isolates our terms neatly:
     \begin{equation}
-    w(c + b) = b \cdot H + L - A_0
+    w(c + b) = b \cdot H
     \end{equation}
     
     Dividing through by $(c + b)$ yields the beautiful, closed-form \textbf{Money Plot Linear Baseline Equation}:
     \begin{equation}
-    w = \frac{b \cdot H + L - A_0}{c + b}
+    w = \frac{b \cdot H}{c + b}
     \end{equation}
     
     ---
@@ -147,6 +148,9 @@
     
     \section{Phase 2: The Exponential Depletion Engine}
     Upon entering retirement, the cash flow behavior flips. To match real-world physical constraints, living expenses must be accessible at the \textit{beginning} of each calendar year. Therefore, retirement spending is modeled strictly as an \textbf{Annuity Due}. 
+    \begin{equation}
+        {\color{mpblack} R_f} = {\color{mpgreen} A_w} {\color{mpred}(1+r)^f} - {\color{mpred}b \cdot \frac{(1+r)^{f+1} - (1+r)}{r}}
+    \end{equation}
     
     \subsection{Step-by-Step Inductive Derivation of the Depletion Phase}
     We trace the remaining capital balance $R$ at the close of each retirement year sequentially, demonstrating why the timing mismatch injects an extra factor of $(1+r)$ compared to an ordinary annuity:
@@ -169,10 +173,7 @@
         \sum_{k=1}^{f} (1+r)^k = (1+r) \sum_{k=0}^{f-1} (1+r)^k = (1+r) \cdot \frac{(1+r)^f - 1}{r}
     \end{equation}
     
-    Distributing the factored $(1+r)$ back across the numerator yields the completed, time-synchronized depletion engine expression:
-    \begin{equation}
-        {\color{mpblack} R_f} = {\color{mpgreen} A_w} {\color{mpred}(1+r)^f} - {\color{mpred}b \cdot \frac{(1+r)^{f+1} - (1+r)}{r}}
-    \end{equation}
+    Distributing the factored $(1+r)$ back across the numerator yields the completed, time-synchronized depletion engine expression matching equation 13.
     
     ---
     
@@ -184,7 +185,12 @@
     \begin{equation}
     \left[ {\color{mpgreen} A_0(1+r)^w + c \cdot \frac{(1+r)^w - 1}{r}} \right] {\color{mpred}(1+r)^{H-w}} - {\color{mpred}b \cdot \frac{(1+r)^{H-w+1} - (1+r)}{r}} = {\color{mpblack}L}
     \end{equation}
-    
+    \begin{equation}
+    \left[ {\color{mpgreen} A_0(1+r)^w + c \cdot \frac{(1+r)^w - 1}{r}} \right] {\color{mpred}(1+r)^{H-w}} - {\color{mpred}b \cdot \frac{(1+r)^{H-w+1} - (1+r)}{r}} = {\color{mpblack}L}
+    \end{equation}
+    \begin{equation}
+    \left[ {A_0(1+r)^w + c \cdot \frac{(1+r)^w - 1}{r}} \right] {(1+r)^{H-w}} - { \cdot \frac{(1+r)^{H-w+1} - (1+r)}{r}} = L
+    \end{equation}
     \subsection{The Algebraic Isolation}
     Distributing the central exponential term ${\color{mpred}(1+r)^{H-w}}$ across our accumulation bracket allows the localized $w$ variables to elegantly combine and drop out of the leading terms:
     \begin{equation}
@@ -211,7 +217,7 @@
     (H - w) \ln(1+r) = \ln \left[ \frac{(rA_0 + c)(1+r)^H + b(1+r) - rL}{c + b(1+r)} \right]
     \end{equation}
     
-    Isolating $w$ delivers the final \textbf{Money Plot Master Legacy Equation}:
+    Isolating $w$ yields the final closed-form analytical solution for the required working timeline:
     \begin{equation}
     w = H - \frac{\ln \left[ \frac{(rA_0 + c)(1+r)^H + b(1+r) - rL}{c + b(1+r)} \right]}{\ln(1+r)}
     \end{equation}
