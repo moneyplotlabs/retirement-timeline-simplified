@@ -627,9 +627,9 @@
         } else {
             // Exponential compound solver factoring in the terminal legacy floor restriction
             const compoundHorizon = Math.pow(1 + r, totalHorizon);
-            const numerator = (r * a0 + s) * compoundHorizon + c - (r * floor);
-            const denominator = s + c;
-            
+            const numerator = (r * a0 + s) * compoundHorizon + c * (1 + r) - (r * floor);
+            const denominator = s + c * (1 + r);
+                    
             if (denominator === 0 || (numerator / denominator) <= 0) {
                 w = totalHorizon;
             } else {
