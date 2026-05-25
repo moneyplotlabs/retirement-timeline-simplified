@@ -8,6 +8,7 @@ mp_blue  = '#3B82F6'
 mp_green = '#10B981'
 mp_red   = '#EF4444'
 mp_purple = '#8B5CF6'  # Capital Yield Component (A_t * r)
+mp_brown   = '#A52A2A'
 
 # Structural Neutrals for Environmental Comparison
 mp_grey       = '#64748B'
@@ -57,7 +58,7 @@ ages_acc_lin = ages_lin[:split_idx_lin]
 ages_dep_lin = ages_lin[split_idx_lin-1:]
 income_profile_lin = [I if age <= age_retire_linear else 0 for age in ages_lin]
 
-ax1.step(ages_lin, income_profile_lin, where='mid', color=mp_dark,  marker='.', linestyle='-', linewidth=1.5, alpha=0.5, label='Active Earned Income ($I$)')
+ax1.step(ages_lin, income_profile_lin, where='mid', color=mp_brown,  marker='.', linestyle='-', linewidth=1.5, alpha=0.7, label='Active Earned Income ($I$)')
 ax1.bar(ages_acc_lin, [s]*len(ages_acc_lin), bottom=[c]*len(ages_acc_lin), color=mp_green, alpha=0.15, width=0.6, label='Savings Inflow ($s$)')
 ax1.bar(ages_lin, [c]*len(ages_lin), bottom=[0]*len(ages_lin), color=mp_red, alpha=0.15, width=0.6, label='Consumption Outflow ($c$)')
 
@@ -66,8 +67,8 @@ ax1.tick_params(axis='y', labelcolor=mp_grey)
 
 # Axis 2: Foreground Net Worth Trajectory (Right Axis)
 ax1b = ax1.twinx()
-ax1b.plot(ages_acc_lin, nw_lin[:split_idx_lin], color=mp_green, linewidth=3, label='Accumulation Phase Net Worth')
-ax1b.plot(ages_dep_lin, nw_lin[split_idx_lin-1:], color=mp_red, linewidth=3, label='Decumulation Phase Net Worth')
+ax1b.plot(ages_acc_lin, nw_lin[:split_idx_lin], color=mp_green, linewidth=3, label='Accumulation Phase Net Worth ($A_t$)')
+ax1b.plot(ages_dep_lin, nw_lin[split_idx_lin-1:], color=mp_red, linewidth=3, label='Decumulation Phase Net Worth ($A_t$)')
 
 ax1b.plot(age_retire_linear, A_w_linear, marker='o', color=mp_dark, markersize=8, zorder=5)
 ax1b.annotate(f'Peak $A_w$\nAge {age_retire_linear:.1f}\n${int(A_w_linear):,}', 
@@ -178,13 +179,13 @@ fig2, ax2 = plt.subplots(figsize=(7.2, 4.4), layout='tight')
 
 # Left Axis: Annual Velocities (Fractional Bars & Steps)
 # Use 'where=post' to make sure the step line visually updates exactly inside the transition block
-ax2.step(ages_lin, income_line_profile, where='mid', color=mp_dark, marker='.', linestyle='-', linewidth=1.5, alpha=0.5, label='Active Earned Income ($I$)')
+ax2.step(ages_lin, income_line_profile, where='mid', color=mp_brown, marker='.', linestyle='-', linewidth=1.5, alpha=0.7, label='Earned Income ($I$)')
 
 # Segmenting the bars cleanly across phases for visual contrast
 mask_pre = ages_lin <= transition_year
 mask_post = ages_lin >= transition_year
 
-ax2.bar(ages_lin, bar_growth_layer, bottom=income_line_profile, color=mp_purple, alpha=0.15, width=0.6, label='Yield ($A_t \\cdot r$)')
+ax2.bar(ages_lin, bar_growth_layer, bottom=income_line_profile, color=mp_purple, alpha=0.15, width=0.6, label='Asset-Generated Yield ($A_t \\cdot r$)')
 ax2.bar(ages_lin[mask_pre], bar_savings_layer[:len(ages_lin[mask_pre])], bottom=[c]*len(ages_lin[mask_pre]), color=mp_green, alpha=0.15, width=0.6, label='Savings Inflow ($s$)')
 ax2.bar(ages_lin, [c]*len(ages_lin), bottom=[0]*len(ages_lin), color=mp_red, alpha=0.15, width=0.6, label='Consumption Outflow ($c$)')
 
@@ -197,8 +198,8 @@ ax2b = ax2.twinx()
 mask_acc = ages_eval <= age_retire_exp
 mask_dep = ages_eval >= age_retire_exp
 
-ax2b.plot(ages_eval[mask_acc], np.array(nw_exp)[mask_acc], color=mp_green, linewidth=3, label='Exponential Accumulation')
-ax2b.plot(ages_eval[mask_dep], np.array(nw_exp)[mask_dep], color=mp_red, linewidth=3, label='Exponential Depletion')
+ax2b.plot(ages_eval[mask_acc], np.array(nw_exp)[mask_acc], color=mp_green, linewidth=3, label='Exponential Accumulation ($A_t$)')
+ax2b.plot(ages_eval[mask_dep], np.array(nw_exp)[mask_dep], color=mp_red, linewidth=3, label='Exponential Depletion ($A_t$)')
 
 ax2b.plot(age_retire_exp, A_w_exponential, marker='o', color=mp_dark, markersize=8, zorder=5)
 ax2b.annotate(f'Peak $A_w$\nAge {age_retire_exp:.2f}\n${int(A_w_exponential):,}', 

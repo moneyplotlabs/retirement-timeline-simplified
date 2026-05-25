@@ -19,6 +19,8 @@
 \definecolor{mpblue}{HTML}{3B82F6}
 \definecolor{mpgreen}{HTML}{10B981}
 \definecolor{mpred}{HTML}{EF4444}
+\definecolor{mppurple}{HTML}{8B5CF6}
+\definecolor{mpbrown}{HTML}{A52A2A}
 
 % Clean, modern margins
 \geometry{margin=1in}
@@ -127,12 +129,17 @@ Dividing through isolates our fundamental idealized baseline relationship:
 \begin{equation}
 w = \frac{c \cdot H}{s + c}
 \end{equation}
-In the example in Figure 1, a person saving 25\% of their income: $c = \$45,000\text{/year}$, $s = \$15,000\text{/year}$, \\
-$T_{start} = \text{25 years}$, $T_{end} = \text{95 years}$.
+In the example in Figure 1, a person saving 25\% of their \$60,000/year income: $c = \$45,000\text{/year}$, $s = \$15,000\text{/year}$, 
+$T_{start} = \text{25 years}$, $T_{end} = \text{95 years}$:
 \begin{align*}
     w &= \frac{\$45,000 \cdot 70 \text{ years}}{\$45,000 + \$15,000}\\
     w &= 52.5 \text{ years}
 \end{align*}
+Another way to look at it is that the total area of the \textcolor{mpred}{consumption} bar chart should equal the area under the \textcolor{mpbrown}{earned income} line. 
+\begin{equation}
+{\color{mpbrown}I} * w = {\color{mpred}c} * H
+\end{equation}
+Equivalently, the  area of the \textcolor{mpgreen}{savings} bars is equal to the post retirement \textcolor{mpred}{consumption} bars.
 
 \subsection{Case 2: The Parameterized Linear Solution with Boundary Modifiers ($A_0 \neq 0, L \neq 0$)}
 We now expand our straight-line environment to account for real-world initial endowments and estate conservation goals. We reintroduce the asset head-start parameter ($A_0$) and the designated capital legacy floor ($L$). 
@@ -202,7 +209,7 @@ Substituting Equation 18 back into Equation 17 yields our verified final accumul
 \section{Phase 2: The Exponential decumulation Engine}
 Upon entering retirement, the cash flow behavior flips. To match real-world physical constraints, living expenses must be accessible at the \textit{beginning} of each calendar year. Therefore, retirement spending is modeled strictly as an \textbf{Annuity Due}. 
 \begin{equation}
-    {\color{mpblack} R_f} = {\color{mpgreen} A_w} {\color{mpred}(1+r)^f} - {\color{mpred}c \cdot \frac{(1+r)^{f+1} - (1+r)}{r}}
+    {\color{mpdark} R_f} = {\color{mpgreen} A_w} {\color{mpred}(1+r)^f} - {\color{mpred}c \cdot \frac{(1+r)^{f+1} - (1+r)}{r}}
 \end{equation}
 
 \subsection{Step-by-Step Inductive Derivation of the decumulation Phase}
@@ -235,7 +242,7 @@ To complete our global solution, we enforce our final boundary constraint where 
 \subsection{The Color-Coded Substitution}
 We inject the accumulation boundary definition (Equation 16) directly into our synchronized decumulation phase expression (Equation 19), creating a unified timeline equation:
 \begin{equation}
-\left[ {\color{mpgreen} A_0(1+r)^w + s \cdot \frac{(1+r)^w - 1}{r}} \right] {\color{mpred}(1+r)^{H-w}} - {\color{mpred}c \cdot \frac{(1+r)^{H-w+1} - (1+r)}{r}} = {\color{mpblack}L}
+\left[ {\color{mpgreen} A_0(1+r)^w + s \cdot \frac{(1+r)^w - 1}{r}} \right] {\color{mpred}(1+r)^{H-w}} - {\color{mpred}c \cdot \frac{(1+r)^{H-w+1} - (1+r)}{r}} = {\color{mpdark}L}
 \end{equation}
 
 \subsection{The Algebraic Isolation}
@@ -277,7 +284,7 @@ Observe that evaluating the limit of Equation 28 as $r \to 0$ collapses perfectl
 \begin{figure}[H]
 \centering
 \includegraphics[width=12cm, height=6cm]{exponential_plot.pdf}
-\caption{The exponential compounding lifecycle curves where $r>0\%$. The \textcolor{mpgreen}{accumulation phase} curves upward via geometric expansion and transitions to an accelerated annuity-due \textcolor{mpred}{decumulation} phase.}
+\caption{The exponential compounding lifecycle curves where $r>0\%$. The \textcolor{mpgreen}{accumulation phase} curves upward via geometric expansion and transitions to an accelerated annuity-due \textcolor{mpred}{decumulation} phase. The total area of the \textcolor{mpred}{consumption} bar chart should equal the area under the \textcolor{mpbrown}{earned income} line + the total area under the \textcolor{mppurple}{earned income}. The  area of the \textcolor{mpgreen}{savings} bar chart is equal to the post retirement \textcolor{mpred}{consumption} bar chart.}
 \label{fig:exponential_plot}
 \end{figure}
 
