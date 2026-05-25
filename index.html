@@ -345,8 +345,8 @@
     <h2>Money Plot Labs: The Pure Math of Freedom</h2>
     <div class="doc-footer">
         <div class="doc-notes">
-            <p><strong>Pure Math Framework:</strong> All figures are calculated in <strong>today's dollars</strong> (inflation-adjusted). The default <strong>3.0% real growth rate</strong> means your investments grow by 3% <em>on top of</em> inflation (e.g., if inflation is 2%, your nominal return is 5%). This conservative baseline is structurally designed to mirror real-world safety nets like the <a href="https://www.bogleheads.org/wiki/Trinity_study" target="_blank" style="color: var(--accent-blue); text-decoration: underline;">4% Rule</a>.</p>
-            <p>While <a href="https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html" target="_blank" style="color: var(--accent-blue); text-decoration: underline;">historic portfolios</a> (e.g., a balanced mix of 60% stocks and 40% bonds) average a long-term 5.7% real growth rate (approximately 8.8% nominal minus 3.1% inflation), they carry a 9.5% standard deviation. This volatility creates a "Sequence of Returns" risk—if the stock market crashes right as you retire, a fixed 5.7% assumption fails. Dropping the baseline to a smooth 3.0% real growth rate mathematically simulates that volatility buffer, ensuring your plan survives severe market downturns.</p>
+            <p><strong>Pure Math Framework:</strong> All figures are calculated in <strong>today's dollars</strong> (inflation-adjusted). The default <strong>3.0% real growth rate during accumulation</strong> means your investments grow by 3% <em>on top of</em> inflation (e.g., if inflation is 2%, your nominal return is 5%). This conservative baseline is structurally designed to mirror real-world safety nets like the <a href="https://www.bogleheads.org/wiki/Trinity_study" target="_blank" style="color: var(--accent-blue); text-decoration: underline;">4% Rule</a>.</p>
+            <p>While <a href="https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html" target="_blank" style="color: var(--accent-blue); text-decoration: underline;">historic portfolios</a> (e.g., a balanced mix of 60% stocks and 40% bonds) average a long-term 5.7% real growth rate (approximately 8.8% nominal minus 3.1% inflation), they carry a 9.5% standard deviation. This volatility creates a "Sequence of Returns" risk—if the stock market crashes right as you retire, a fixed 5.7% assumption fails. Dropping the baseline to a smooth 3.0% real growth rate during accumulation mathematically simulates that volatility buffer, ensuring your plan survives severe market downturns.</p>
         </div>
         <div class="doc-links">
             <a href="./docs/001-the-pure-math-of-financial-freedom.pdf" target="_blank" class="btn-doc">
@@ -427,7 +427,7 @@
             </div>
 
             <div class="control-group">
-                <label class="control-label" id="label-growth">Real Growth Rate: 3%</label>
+                <label class="control-label" id="label-growth">Real Growth Rate during accumulation: 3.0%</label>
                 <div class="interactive-row">
                     <input type="range" id="input-growth" min="-3.0" max="7.0" step="0.5" value="3.0">
                     <input type="number" id="box-growth" class="manual-box" min="-5.0" max="15.0" step="0.1" value="3.0">
@@ -464,6 +464,14 @@
                     </div>
                     <button class="btn-lock" id="btn-lock-y" title="Toggle vertical net worth bounds lock">Lock Current</button>
                 </div>
+                <!-- Decumulation Growth Rate Control -->
+                <div class="control-group" style="margin-top: 8px;">
+                    <label class="control-label" id="label-growth-dec">Real Growth Rate (Decumulation): 3.0%</label>
+                    <div class="interactive-row">
+                        <input type="range" id="input-growth-dec" min="-3.0" max="7.0" step="0.5" value="3.0">
+                        <input type="number" id="box-growth-dec" class="manual-box" min="-5.0" max="15.0" step="0.1" value="3.0">
+                    </div>
+                </div>
                 <!-- Capital Legacy Floor Control Group -->
                 <div class="control-group" style="margin-top: 8px;">
                     <label class="control-label" id="label-legacy-floor">Desired Legacy Floor: $0</label>
@@ -489,11 +497,13 @@
     const inputSavings = document.getElementById('input-savings');
     const inputSpending = document.getElementById('input-spending');
     const inputGrowth = document.getElementById('input-growth');
+    const inputGrowthDec = document.getElementById('input-growth-dec');
 
     const boxPrincipal = document.getElementById('box-principal');
     const boxSavings = document.getElementById('box-savings');
     const boxSpending = document.getElementById('box-spending');
     const boxGrowth = document.getElementById('box-growth');
+    const boxGrowthDec = document.getElementById('box-growth-dec');
 
     const btnAdvanced = document.getElementById('advanced-button');
     const panelAdvanced = document.getElementById('advanced-panel');
@@ -583,6 +593,7 @@
         params.set('savings', boxSavings.value);
         params.set('spending', boxSpending.value);
         params.set('growth', boxGrowth.value);
+        params.set('growthDec', boxGrowthDec.value);
         params.set('legacyFloor', boxLegacyFloor.value);
         if(boxAxisMin.value !== "") params.set('xMin', boxAxisMin.value);
         if(boxAxisMax.value !== "") params.set('xMax', boxAxisMax.value);
@@ -600,6 +611,7 @@
         if (params.has('savings')) boxSavings.value = inputSavings.value = params.get('savings');
         if (params.has('spending')) boxSpending.value = inputSpending.value = params.get('spending');
         if (params.has('growth')) boxGrowth.value = inputGrowth.value = params.get('growth');
+        if (params.has('growthDec')) boxGrowthDec.value = inputGrowthDec.value = params.get('growthDec');
         if (params.has('legacyFloor')) boxLegacyFloor.value = sliderLegacyFloor.value = params.get('legacyFloor');
         if (params.has('xMin')) boxAxisMin.value = params.get('xMin');
         if (params.has('xMax')) boxAxisMax.value = params.get('xMax');
@@ -722,13 +734,15 @@
         const c = parseFloat(boxSavings.value) || 0;
         const b = parseFloat(boxSpending.value) || 0;
         const r = (parseFloat(boxGrowth.value) || 0) / 100;
+        const rDec = (parseFloat(boxGrowthDec.value) || 0) / 100;
         const floor = parseFloat(boxLegacyFloor.value) || 0;
 
         // Dynamic, zero-clutter inline label updates
         document.getElementById('label-principal').innerText = 'Starting Balance: ' + formatCurrency(p0);
         document.getElementById('label-savings').innerText = 'Annual Savings: ' + formatCurrency(c) + '/yr';
         document.getElementById('label-spending').innerText = 'Annual Retirement Spending: ' + formatCurrency(b) + '/yr';
-        document.getElementById('label-growth').innerText = 'Real Growth Rate: ' + (r * 100).toFixed(1) + '%';
+        document.getElementById('label-growth').innerText = 'Real Growth Rate during accumulation: ' + (r * 100).toFixed(1) + '%';
+        document.getElementById('label-growth-dec').innerText = 'Real Growth Rate (Decumulation): ' + (rDec * 100).toFixed(1) + '%';
         document.getElementById('label-legacy-floor').innerText = 'Desired Legacy Floor: ' + formatCurrency(floor);
 
         const results = calculateTimeline(startAge, endAge, p0, c, b, r);
@@ -887,6 +901,7 @@
     linkInputsDecoupled(inputSavings, boxSavings, 0, 100000, 0, 1000000);       // Slider $100k, Box max $1M
     linkInputsDecoupled(inputSpending, boxSpending, 0, 100000, 0, 1000000);     // Slider $100k, Box max $1M
     linkInputsDecoupled(inputGrowth, boxGrowth, -3.0, 7.0, -5.0, 15.0);          // Slider 7%, Box max 15%
+    linkInputsDecoupled(inputGrowthDec, boxGrowthDec, -3.0, 7.0, -5.0, 15.0);    // Slider 7%, Box max 15%
     linkInputsDecoupled(sliderLegacyFloor, boxLegacyFloor, 0, 1000000, 0, 5000000); // Slider $1M, Box max $5M
 
     // Standard 1:1 linking is perfectly fine for ages since slider and box share identical 0-120 bounds
