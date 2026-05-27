@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Money Plot Labs - Lifepath Cash Flow Simulator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-green: #10b981;
+            --accent-blue: #3b82f6;
+            --accent-red: #ef4444;
+            --border: #334155;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1050px;
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+        }
+
+        h2 {
+            margin-top: 0;
+            font-weight: 600;
+            font-size: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 12px;
+            color: var(--text-main);
+        }
+
+        .layout-split {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+            margin-top: 20px;
+        }
+
+        @media (min-width: 900px) {
+            .layout-split {
+                grid-template-columns: 1.1fr 1fr;
+            }
+        }
+
+        .chart-container {
+            position: relative;
+            height: 430px;
+            width: 100%;
+            background-color: rgba(15, 23, 42, 0.2);
+            border-radius: 8px;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid var(--border);
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background-color: rgba(15, 23, 42, 0.3);
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            max-height: 580px;
+            overflow-y: auto;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .milestone-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .milestone-block {
+            background-color: rgba(15, 23, 42, 0.4);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px;
+            position: relative;
+            transition: border-color 0.2s;
+        }
+
+        .milestone-block:hover {
+            border-color: var(--accent-blue);
+        }
+
+        .milestone-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .milestone-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--accent-blue);
+            letter-spacing: 0.05em;
+        }
+
+        .btn-add-event {
+            background-color: transparent;
+            color: var(--accent-green);
+            border: 1px dashed var(--accent-green);
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+
+        .control-label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-main);
+        }
+
+        /* Standardized Input Styling for consistency */
+        input[type="number"] {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            outline: none;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        input[type="number"]:focus {
+            border-color: var(--accent-blue);
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .input-row:last-child { margin-bottom: 0; }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: var(--border);
+            border-radius: 5px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .btn-delete {
+            background: none;
+            border: none;
+            color: var(--accent-red);
+            cursor: pointer;
+            padding: 4px;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .btn-delete:hover { opacity: 1; }
+
+        .placeholder-text {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            line-height: 1.5;
+            padding: 20px;
+            text-align: center;
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Money Plot Labs: Lifepath Cash Flow Simulator</h2>
+
+    <div class="layout-split">
+        <!-- Left Side: Chart Placeholder -->
+        <div>
+            <div style="margin-bottom: 8px;">
+                <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Stochastic Trajectory Projection</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="lifepathChart"></canvas>
+                <!-- Center absolute overlay for initial state -->
+                <div id="chart-loader" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;">
+                    <span class="placeholder-text">Chart initialization pending engine logic...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side: Control Panel Placeholder -->
+        <div class="controls">
+            <div class="control-group">
+                <label class="control-label">Variable Flow Configuration</label>
+                <div class="placeholder-text">
+                    The lookup engine for non-uniform cash flows (one-time windfalls, variable yearly spending, and stochastic adjustments) will be implemented here in Step 2.
+                </div>
+            </div>
+            <div id="milestone-container" class="milestone-list"></div>
+            <button id="add-event-btn" class="btn-add-event">+ Add Life Event (Milestone)</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const milestoneContainer = document.getElementById('milestone-container');
+    const addEventBtn = document.getElementById('add-event-btn');
+    const loader = document.getElementById('chart-loader');
+    
+    let chartInstance = null;
+    
+    // Internal data structure
+    let milestones = [];
+
+    function initChart() {
+        const ctx = document.getElementById('lifepathChart').getContext('2d');
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Inflow (Income)',
+                        data: [],
+                        backgroundColor: 'rgba(16, 185, 129, 0.6)',
+                        borderColor: '#10b981',
+                        borderWidth: 1,
+                        stack: 'flow'
+                    },
+                    {
+                        label: 'Outflow (Spending)',
+                        data: [],
+                        backgroundColor: 'rgba(239, 68, 68, 0.6)',
+                        borderColor: '#ef4444',
+                        borderWidth: 1,
+                        stack: 'flow'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        stacked: true,
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8', font: { size: 10 } },
+                        title: { display: true, text: 'Age', color: '#94a3b8' }
+                    },
+                    y: {
+                        stacked: false, // We don't stack them on top of each other, but draw them on opposite sides of 0
+                        grid: { color: '#334155' },
+                        ticks: { 
+                            color: '#94a3b8',
+                            callback: (v) => '$' + Math.abs(v).toLocaleString()
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#f8fafc' } },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                label += '$' + Math.abs(context.raw).toLocaleString();
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        loader.style.display = 'none';
+    }
+
+    function generateCashFlowTimeline(startAge, endAge, milestones) {
+        const labels = [];
+        const inflowData = [];
+        const outflowData = [];
+
+        for (let age = startAge; age <= endAge; age++) {
+            labels.push(age);
+            
+            // Find the active milestone for this age
+            // Milestones are sorted by age, so we find the last one that is <= current age
+            const active = milestones.filter(m => m.age <= age).pop();
+            
+            if (active) {
+                inflowData.push(active.income);
+                outflowData.push(-active.spending); // Negative for bottom stack
+            } else {
+                inflowData.push(0);
+                outflowData.push(0);
+            }
+        }
+
+        return { labels, inflowData, outflowData };
+    }
+
+    function updateSimulation() {
+        if (!chartInstance) initChart();
+
+        // We calculate from Age 20 to 100 for a consistent view
+        const { labels, inflowData, outflowData } = generateCashFlowTimeline(20, 100, milestones);
+
+        chartInstance.data.labels = labels;
+        chartInstance.data.datasets[0].data = inflowData;
+        chartInstance.data.datasets[1].data = outflowData;
+        
+        chartInstance.update('none'); // Use 'none' for instant reactive feel
+    }
+
+    function createMilestoneUI(milestone) {
+        const block = document.createElement('div');
+        block.className = 'milestone-block';
+        block.dataset.id = milestone.id;
+
+        block.innerHTML = `
+            <div class="milestone-header">
+                <div class="milestone-title">Event Milestone</div>
+                <button class="btn-delete" onclick="removeMilestone('${milestone.id}')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+            </div>
+            <div class="input-row">
+                <div class="control-group">
+                    <label class="control-label">Start Age</label>
+                    <input type="number" class="inp-age" value="${milestone.age}" min="0" max="120">
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Gross Income</label>
+                    <input type="number" class="inp-income" value="${milestone.income}" step="1000">
+                </div>
+            </div>
+            <div class="input-row">
+                <div class="control-group">
+                    <label class="control-label">Lifestyle Spending</label>
+                    <input type="number" class="inp-spending" value="${milestone.spending}" step="1000">
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Annual Savings</label>
+                    <input type="number" class="inp-savings" value="${milestone.savings}" step="1000">
+                </div>
+            </div>
+        `;
+
+        // Bind linked math logic (I = S + C)
+        const inpAge = block.querySelector('.inp-age');
+        const inpIncome = block.querySelector('.inp-income');
+        const inpSpending = block.querySelector('.inp-spending');
+        const inpSavings = block.querySelector('.inp-savings');
+
+        inpAge.addEventListener('change', () => syncDataAndSort());
+        
+        inpIncome.addEventListener('input', () => {
+            // Adjust savings when income moves
+            inpSavings.value = Math.max(0, inpIncome.value - inpSpending.value);
+            syncDataAndSort();
+        });
+
+        inpSpending.addEventListener('input', () => {
+            // Adjust savings when spending moves
+            inpSavings.value = Math.max(0, inpIncome.value - inpSpending.value);
+            syncDataAndSort();
+        });
+
+        inpSavings.addEventListener('input', () => {
+            // Keeping Income fixed and letting Spending absorb the change per fallback logic
+            inpSpending.value = Math.max(0, inpIncome.value - inpSavings.value);
+            syncDataAndSort();
+        });
+
+        return block;
+    }
+
+    function addMilestone(age = 30, income = 60000, savings = 15000, spending = 45000) {
+        const milestone = {
+            id: Math.random().toString(36).substr(2, 9),
+            age: age,
+            income: income,
+            savings: savings,
+            spending: spending
+        };
+        
+        milestones.push(milestone);
+        renderMilestones();
+    }
+
+    function removeMilestone(id) {
+        if (milestones.length <= 1) return; // Keep at least one milestone
+        milestones = milestones.filter(m => m.id !== id);
+        renderMilestones();
+    }
+
+    function syncDataAndSort() {
+        // 1. Capture current values from DOM
+        const blocks = document.querySelectorAll('.milestone-block');
+        const updatedMilestones = [];
+
+        blocks.forEach(block => {
+            updatedMilestones.push({
+                id: block.dataset.id,
+                age: parseInt(block.querySelector('.inp-age').value) || 0,
+                income: parseFloat(block.querySelector('.inp-income').value) || 0,
+                spending: parseFloat(block.querySelector('.inp-spending').value) || 0,
+                savings: parseFloat(block.querySelector('.inp-savings').value) || 0
+            });
+        });
+
+        // 2. Sort chronologically
+        updatedMilestones.sort((a, b) => a.age - b.age);
+        
+        // 3. Update global state
+        milestones = updatedMilestones;
+        
+        // 4. Update Simulation
+        updateSimulation();
+    }
+
+    function renderMilestones() {
+        // Preserve current scroll position
+        const scrollPos = milestoneContainer.parentElement.scrollTop;
+        
+        milestoneContainer.innerHTML = '';
+        
+        // Sort before rendering to ensure DOM matches state
+        milestones.sort((a, b) => a.age - b.age);
+
+        milestones.forEach(m => {
+            milestoneContainer.appendChild(createMilestoneUI(m));
+        });
+
+        milestoneContainer.parentElement.scrollTop = scrollPos;
+        updateSimulation();
+    }
+
+    addEventBtn.addEventListener('click', () => {
+        // Default to adding a milestone 10 years after the last one
+        const lastAge = milestones.length > 0 ? milestones[milestones.length - 1].age : 30;
+        const lastIncome = milestones.length > 0 ? milestones[milestones.length - 1].income : 60000;
+        const lastSpending = milestones.length > 0 ? milestones[milestones.length - 1].spending : 45000;
+        const lastSavings = milestones.length > 0 ? milestones[milestones.length - 1].savings : 15000;
+        
+        addMilestone(lastAge + 10, lastIncome, lastSavings, lastSpending);
+    });
+
+    // Initialize with default
+    addMilestone(30, 60000, 15000, 45000);
+</script>
+</body>
+</html>
