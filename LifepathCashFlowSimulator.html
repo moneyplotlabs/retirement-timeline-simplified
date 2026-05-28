@@ -257,6 +257,21 @@
             display: flex;
         }
 
+        /* ADVANCED FLEX & GRID ROW ENGINE */
+        .advanced-row-x {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            width: 100%;
+        }
+
+        .x-input-pair {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            flex: 1;
+        }
+
         .btn-lock {
             background-color: var(--accent-blue);
             color: var(--text-main);
@@ -279,6 +294,10 @@
             background-color: rgba(239, 68, 68, 0.2);
             color: var(--accent-red);
             border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-lock.locked:hover {
+            background-color: rgba(239, 68, 68, 0.3);
         }
 
         .input-row {
@@ -356,8 +375,9 @@
     <div class="layout-split">
         <!-- Left Side: Chart Placeholder -->
         <div>
-            <div style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Stochastic Trajectory Projection</span>
+                <button class="btn-lock" id="main-chart-lock" style="height: 28px; padding: 0 12px; font-size: 0.8rem; width: auto;">Lock Scale for Comparison</button>
             </div>
             <div class="chart-container">
                 <canvas id="lifepathChart"></canvas>
@@ -426,6 +446,24 @@
                         <input type="number" id="box-legacy-floor" class="manual-box" min="0" max="5000000" step="50000" value="0" placeholder="$">
                     </div>
                 </div>
+
+                <div class="advanced-row-x" style="margin-top: 8px;">
+                    <div class="x-input-pair">
+                        <div class="control-group">
+                            <label class="control-label">Chart Min Age</label>
+                            <input type="number" id="box-axis-min" min="0" max="100" value="" placeholder="Auto">
+                        </div>
+                        <div class="control-group">
+                            <label class="control-label">Chart Max Age</label>
+                            <input type="number" id="box-axis-max" min="30" max="150" value="" placeholder="Auto">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group" style="margin-top: 8px;">
+                    <label class="control-label">Chart Max Net Worth ($)</label>
+                    <input type="number" id="box-y-max" step="100000" min="0" value="" placeholder="Auto (Peak Net Worth)">
+                </div>
             </div>
 
             <div id="milestone-container" class="milestone-list"></div>
@@ -458,9 +496,14 @@
     const panelAdvanced = document.getElementById('advanced-panel');
     const sliderLegacyFloor = document.getElementById('slider-legacy-floor');
     const boxLegacyFloor = document.getElementById('box-legacy-floor');
+    const boxAxisMin = document.getElementById('box-axis-min');
+    const boxAxisMax = document.getElementById('box-axis-max');
+    const boxYMax = document.getElementById('box-y-max');
+    const mainLockBtn = document.getElementById('main-chart-lock');
     
     let chartInstance = null;
     let ratesLinked = false;
+    let computedPeakCache = 0;
     
     // Internal data structure
     let milestones = [];
@@ -514,6 +557,7 @@
                     y: {
                         stacked: false,
                         grid: { color: '#334155' },
+                        beginAtZero: true,
                         ticks: { 
                             color: '#94a3b8',
                             callback: (v) => '$' + Math.abs(v).toLocaleString()
@@ -523,6 +567,7 @@
                     yNetWorth: {
                         position: 'right',
                         grid: { display: false },
+                        min: 0,
                         ticks: {
                             color: '#3b82f6',
                             callback: (v) => v >= 1000000 ? '$' + (v / 1000000).toFixed(1) + 'M' : '$' + (v / 1000).toFixed(0) + 'k'
@@ -637,6 +682,7 @@
 
         const rAge = startAge + w;
         const finalSim = simulateLife(startAge, endAge, principal, rAcc, rDec, rAge);
+        computedPeakCache = finalSim.peakNw;
 
         // Update Metrics
         mWorkYears.innerText = w.toFixed(1) + ' Years';
@@ -654,14 +700,20 @@
         document.getElementById('label-legacy-floor').innerText = 'Desired Legacy Floor: ' + formatCurrency(floor);
 
         // View Clamping
-        const viewStart = startAge;
-        const viewEnd = endAge;
-        const viewSim = simulateLife(viewStart, viewEnd, principal, rAcc, rDec, rAge);
+        let axisMin = boxAxisMin.value !== "" ? parseInt(boxAxisMin.value) : startAge;
+        let axisMax = boxAxisMax.value !== "" ? parseInt(boxAxisMax.value) : endAge;
+        let yMaxConstraint = boxYMax.value !== "" ? parseFloat(boxYMax.value) : undefined;
+
+        const viewSim = simulateLife(Math.min(startAge, axisMin), Math.max(endAge, axisMax), principal, rAcc, rDec, rAge);
 
         chartInstance.data.labels = viewSim.labels;
         chartInstance.data.datasets[0].data = viewSim.inflowData;
         chartInstance.data.datasets[1].data = viewSim.outflowData;
         chartInstance.data.datasets[2].data = viewSim.nwData;
+
+        chartInstance.options.scales.x.min = axisMin;
+        chartInstance.options.scales.x.max = axisMax;
+        chartInstance.options.scales.yNetWorth.max = yMaxConstraint;
         
         chartInstance.update('none'); // Use 'none' for instant reactive feel
     }
@@ -700,6 +752,33 @@
             btnLinkRates.classList.remove('locked');
             inputGrowthDec.disabled = false;
             boxGrowthDec.disabled = false;
+        }
+        updateSimulation();
+    });
+
+    mainLockBtn.addEventListener('click', () => {
+        if (boxAxisMin.value === "" && boxYMax.value === "") {
+            boxAxisMin.value = parseInt(boxStartAge.value) || 0;
+            boxAxisMax.value = parseInt(boxEndAge.value) || 95;
+            
+            if (computedPeakCache > 0) {
+                const rawPeak = computedPeakCache;
+                let snappedCeiling = Math.round(rawPeak);
+                if (rawPeak >= 1000000) snappedCeiling = Math.ceil(rawPeak / 250000) * 250000;
+                else if (rawPeak >= 250000) snappedCeiling = Math.ceil(rawPeak / 50000) * 50000;
+                else snappedCeiling = Math.ceil(rawPeak / 10000) * 10000;
+                boxYMax.value = snappedCeiling;
+            }
+            
+            mainLockBtn.textContent = "Unlock Auto-Scale";
+            mainLockBtn.classList.add('locked');
+        } else {
+            boxAxisMin.value = "";
+            boxAxisMax.value = "";
+            boxYMax.value = "";
+            
+            mainLockBtn.textContent = "Lock Scale for Comparison";
+            mainLockBtn.classList.remove('locked');
         }
         updateSimulation();
     });
@@ -864,6 +943,10 @@
     document.getElementById('label-growth').innerText = 'Real Growth Rate during accumulation: ' + parseFloat(boxGrowth.value).toFixed(1) + '%';
     document.getElementById('label-growth-dec').innerText = 'Real Growth Rate (Decumulation): ' + parseFloat(boxGrowthDec.value).toFixed(1) + '%';
     document.getElementById('label-legacy-floor').innerText = 'Desired Legacy Floor: ' + formatCurrency(boxLegacyFloor.value);
+
+    boxAxisMin.addEventListener('change', updateSimulation);
+    boxAxisMax.addEventListener('change', updateSimulation);
+    boxYMax.addEventListener('change', updateSimulation);
 
     // Initialize with default
     addMilestone(30, 60000, 15000, 45000);
