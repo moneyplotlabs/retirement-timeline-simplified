@@ -292,9 +292,9 @@
         }
 
         .btn-lock.locked {
-            background-color: rgba(239, 68, 68, 0.2);
-            color: var(--accent-red);
-            border: 1px solid rgba(239, 68, 68, 0.4);
+            background-color: var(--accent-red);
+            color: #fff;
+            border: 1px solid var(--accent-red);
         }
 
         .btn-lock.locked:hover {
@@ -467,6 +467,23 @@
                     <input type="number" id="box-y-max" step="100000" min="0" value="" placeholder="Auto (Peak Net Worth)">
                 </div>
                 <button class="btn-lock" id="btn-lock-y" style="width: 100%; margin-top: 4px;">Lock Current Y</button>
+
+                <!-- External Cash Events -->
+                <div class="control-group" style="margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 12px;">
+                    <label class="control-label">Social Security / Pension ($/yr)</label>
+                    <div class="interactive-row">
+                        <input type="number" id="box-ss-amt" class="manual-box" style="flex: 1;" value="0" step="1000" placeholder="Amount ($/yr)">
+                        <input type="number" id="box-ss-age" class="manual-box" style="width: 80px;" value="67" min="0" max="100" placeholder="Age">
+                    </div>
+                </div>
+
+                <div class="control-group" style="margin-top: 8px;">
+                    <label class="control-label">One-time Windfall (e.g., Inheritance)</label>
+                    <div class="interactive-row">
+                        <input type="number" id="box-windfall-amt" class="manual-box" style="flex: 1;" value="0" step="5000" placeholder="Lump Sum ($)">
+                        <input type="number" id="box-windfall-age" class="manual-box" style="width: 80px;" value="50" min="0" max="100" placeholder="Age">
+                    </div>
+                </div>
             </div>
 
             <div id="milestone-container" class="milestone-list"></div>
@@ -506,6 +523,11 @@
     const btnLockX = document.getElementById('btn-lock-x');
     const btnLockY = document.getElementById('btn-lock-y');
     
+    const boxSsAmt = document.getElementById('box-ss-amt');
+    const boxSsAge = document.getElementById('box-ss-age');
+    const boxWindfallAmt = document.getElementById('box-windfall-amt');
+    const boxWindfallAge = document.getElementById('box-windfall-age');
+
     let chartInstance = null;
     let ratesLinked = false;
     let computedPeakCache = 0;
@@ -603,6 +625,11 @@
     }
 
     function simulateLife(startAge, endAge, principal, rAcc, rDec, rAge) {
+        const ssAmt = parseFloat(boxSsAmt.value) || 0;
+        const ssAge = parseInt(boxSsAge.value) || 0;
+        const wAmt = parseFloat(boxWindfallAmt.value) || 0;
+        const wAge = parseInt(boxWindfallAge.value) || 0;
+
         const labels = [];
         const inflowData = [];
         const outflowData = [];
@@ -614,41 +641,39 @@
         const k = Math.floor(rAge);
         const delta = rAge - k;
 
-        for (let t = startAge; t < endAge; t++) {
+        for (let t = startAge; t <= endAge; t++) {
             labels.push(t);
             nwData.push(balance);
             
             const m = getMilestone(t);
+            const passive = (t >= ssAge) ? ssAmt : 0;
+            const windfall = (t === wAge) ? wAmt : 0;
+
             if (t < k) {
                 // Full working year
-                inflowData.push(m.income);
+                inflowData.push(m.income + passive + windfall);
                 outflowData.push(-m.spending);
-                balance = balance * (1 + rAcc) + m.savings;
-                peakNw = balance;
+                balance = balance * (1 + rAcc) + m.savings + passive + windfall;
+                peakNw = Math.max(peakNw, balance);
             } else if (t === k) {
                 // Transition year (Fractional retirement)
                 const workFrac = delta;
                 const retireFrac = 1 - delta;
 
-                inflowData.push(m.income * workFrac);
+                inflowData.push((m.income * workFrac) + passive + windfall);
                 outflowData.push(-m.spending);
 
-                const balanceMid = balance * Math.pow(1 + rAcc, workFrac) + (m.savings * workFrac);
-                balance = (balanceMid - m.spending * retireFrac) * Math.pow(1 + rDec, retireFrac);
-                peakNw = balanceMid;
+                const balanceMid = balance * Math.pow(1 + rAcc, workFrac) + (m.savings * workFrac) + (passive * workFrac) + (windfall * workFrac);
+                balance = (balanceMid - m.spending * retireFrac + (passive * retireFrac) + (windfall * retireFrac)) * Math.pow(1 + rDec, retireFrac);
+                peakNw = Math.max(peakNw, balanceMid, balance);
             } else {
                 // Full retirement year
-                inflowData.push(0);
+                inflowData.push(passive + windfall);
                 outflowData.push(-m.spending);
-                balance = (balance - m.spending) * (1 + rDec);
+                balance = (balance - m.spending + passive + windfall) * (1 + rDec);
+                peakNw = Math.max(peakNw, balance);
             }
         }
-
-        // Final boundary point representing state at the start of the stop age
-        labels.push(endAge);
-        nwData.push(balance);
-        inflowData.push(0);
-        outflowData.push(0);
 
         return { labels, inflowData, outflowData, nwData, finalBalance: balance, peakNw };
     }
@@ -726,24 +751,6 @@
         updateURLParams();
     }
 
-    function updateButtonStates() {
-        if (boxAxisMin.value !== "" || boxAxisMax.value !== "") {
-            btnLockX.textContent = "Unlock Auto";
-            btnLockX.classList.add('locked');
-        } else {
-            btnLockX.textContent = "Lock Current";
-            btnLockX.classList.remove('locked');
-        }
-
-        if (boxYMax.value !== "") {
-            btnLockY.textContent = "Unlock Auto";
-            btnLockY.classList.add('locked');
-        } else {
-            btnLockY.textContent = "Lock Current";
-            btnLockY.classList.remove('locked');
-        }
-    }
-
     function updateURLParams() {
         const params = new URLSearchParams();
         params.set('startAge', boxStartAge.value);
@@ -753,6 +760,10 @@
         params.set('growthDec', boxGrowthDec.value);
         params.set('legacyFloor', boxLegacyFloor.value);
         params.set('linked', ratesLinked);
+        params.set('ssAmt', boxSsAmt.value);
+        params.set('ssAge', boxSsAge.value);
+        params.set('windfallAmt', boxWindfallAmt.value);
+        params.set('windfallAge', boxWindfallAge.value);
         if(boxAxisMin.value !== "") params.set('xMin', boxAxisMin.value);
         if(boxAxisMax.value !== "") params.set('xMax', boxAxisMax.value);
         if(boxYMax.value !== "") params.set('yMax', boxYMax.value);
@@ -776,6 +787,10 @@
         if (params.has('xMin')) boxAxisMin.value = params.get('xMin');
         if (params.has('xMax')) boxAxisMax.value = params.get('xMax');
         if (params.has('yMax')) boxYMax.value = params.get('yMax');
+        if (params.has('ssAmt')) boxSsAmt.value = params.get('ssAmt');
+        if (params.has('ssAge')) boxSsAge.value = params.get('ssAge');
+        if (params.has('windfallAmt')) boxWindfallAmt.value = params.get('windfallAmt');
+        if (params.has('windfallAge')) boxWindfallAge.value = params.get('windfallAge');
         
         if (params.get('linked') === 'true') {
             ratesLinked = true;
@@ -784,7 +799,7 @@
             inputGrowthDec.disabled = boxGrowthDec.disabled = true;
         }
 
-        if (boxAxisMin.value !== "" || boxYMax.value !== "") {
+        if (boxAxisMin.value !== "" || boxAxisMax.value !== "" || boxYMax.value !== "") {
             mainLockBtn.textContent = "Unlock Auto-Scale";
             mainLockBtn.classList.add('locked');
         }
@@ -840,6 +855,24 @@
         }
         updateSimulation();
     });
+
+    function updateButtonStates() {
+        if (boxAxisMin.value !== "" || boxAxisMax.value !== "") {
+            btnLockX.textContent = "Unlock Auto";
+            btnLockX.classList.add('locked');
+        } else {
+            btnLockX.textContent = "Lock Current";
+            btnLockX.classList.remove('locked');
+        }
+
+        if (boxYMax.value !== "") {
+            btnLockY.textContent = "Unlock Auto";
+            btnLockY.classList.add('locked');
+        } else {
+            btnLockY.textContent = "Lock Current";
+            btnLockY.classList.remove('locked');
+        }
+    }
 
     btnLockX.addEventListener('click', () => {
         if (boxAxisMin.value !== "" || boxAxisMax.value !== "") {
@@ -1056,6 +1089,11 @@
     boxAxisMin.addEventListener('change', updateSimulation);
     boxAxisMax.addEventListener('change', updateSimulation);
     boxYMax.addEventListener('change', updateSimulation);
+
+    boxSsAmt.addEventListener('change', updateSimulation);
+    boxSsAge.addEventListener('change', updateSimulation);
+    boxWindfallAmt.addEventListener('change', updateSimulation);
+    boxWindfallAge.addEventListener('change', updateSimulation);
 
     // Initialize
     loadParamsFromURL();

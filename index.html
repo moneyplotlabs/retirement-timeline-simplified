@@ -518,6 +518,23 @@
                     </div>
                 </div>
 
+                <!-- External Cash Events -->
+                <div class="control-group" style="margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 12px;">
+                    <label class="control-label">Social Security / Pension ($/yr)</label>
+                    <div class="interactive-row">
+                        <input type="number" id="box-ss-amt" class="manual-box" style="flex: 1;" value="0" step="1000" placeholder="Amount ($/yr)">
+                        <input type="number" id="box-ss-age" class="manual-box" style="width: 80px;" value="67" min="0" max="100" placeholder="Age">
+                    </div>
+                </div>
+
+                <div class="control-group" style="margin-top: 8px;">
+                    <label class="control-label">One-time Windfall (e.g., Inheritance)</label>
+                    <div class="interactive-row">
+                        <input type="number" id="box-windfall-amt" class="manual-box" style="flex: 1;" value="0" step="5000" placeholder="Lump Sum ($)">
+                        <input type="number" id="box-windfall-age" class="manual-box" style="width: 80px;" value="50" min="0" max="100" placeholder="Age">
+                    </div>
+                </div>
+
                 <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; border-top: 1px dashed var(--border); padding-top: 12px; margin-top: 8px;">
                     <strong>Bifurcated Growth Rates:</strong> This model supports independent growth rates for the working and retirement phases. 
                     By unlinking these, you can simulate a "glide path" transition from growth-oriented assets while working to more conservative, capital-preservation assets (e.g., bonds) in retirement. 3% for most time frames results in same retirement age as following 4% safe withdrawal rate rule.
@@ -596,6 +613,11 @@
     
     const btnLockX = document.getElementById('btn-lock-x');
     const btnLockY = document.getElementById('btn-lock-y');
+
+    const boxSsAmt = document.getElementById('box-ss-amt');
+    const boxSsAge = document.getElementById('box-ss-age');
+    const boxWindfallAmt = document.getElementById('box-windfall-amt');
+    const boxWindfallAge = document.getElementById('box-windfall-age');
 
     const mWorkYears = document.getElementById('metric-work-years');
     const mRetireAge = document.getElementById('metric-retire-age');
@@ -705,6 +727,10 @@
         params.set('growth', boxGrowth.value);
         params.set('growthDec', boxGrowthDec.value);
         params.set('legacyFloor', boxLegacyFloor.value);
+        params.set('ssAmt', boxSsAmt.value);
+        params.set('ssAge', boxSsAge.value);
+        params.set('windfallAmt', boxWindfallAmt.value);
+        params.set('windfallAge', boxWindfallAge.value);
         if(boxAxisMin.value !== "") params.set('xMin', boxAxisMin.value);
         if(boxAxisMax.value !== "") params.set('xMax', boxAxisMax.value);
         if(boxYMax.value !== "") params.set('yMax', boxYMax.value);
@@ -723,6 +749,10 @@
         if (params.has('growth')) boxGrowth.value = inputGrowth.value = params.get('growth');
         if (params.has('growthDec')) boxGrowthDec.value = inputGrowthDec.value = params.get('growthDec');
         if (params.has('legacyFloor')) boxLegacyFloor.value = sliderLegacyFloor.value = params.get('legacyFloor');
+        if (params.has('ssAmt')) boxSsAmt.value = params.get('ssAmt');
+        if (params.has('ssAge')) boxSsAge.value = params.get('ssAge');
+        if (params.has('windfallAmt')) boxWindfallAmt.value = params.get('windfallAmt');
+        if (params.has('windfallAge')) boxWindfallAge.value = params.get('windfallAge');
         if (params.has('xMin')) boxAxisMin.value = params.get('xMin');
         if (params.has('xMax')) boxAxisMax.value = params.get('xMax');
         if (params.has('yMax')) boxYMax.value = params.get('yMax');
@@ -745,74 +775,87 @@
         const floor = parseFloat(boxLegacyFloor.value) || 0; // Capture the legacy floor
         let w = 0;
 
-        if (totalHorizon <= 0) {
-            return { workingYears: 0, retirementAge: currentAge, peakNetWorth: a0, accumulationData: [], depletionData: [] };
-        }
+        const ssAmt = parseFloat(boxSsAmt.value) || 0;
+        const ssAge = parseInt(boxSsAge.value) || 0;
+        const wAmt = parseFloat(boxWindfallAmt.value) || 0;
+        const wAge = parseInt(boxWindfallAge.value) || 0;
 
-        const getAw = (testW) => {
-            if (rAcc === 0) return a0 + s * testW;
-            return a0 * Math.pow(1 + rAcc, testW) + s * (Math.pow(1 + rAcc, testW) - 1) / rAcc;
-        };
+        if (totalHorizon <= 0) return { workingYears: 0, retirementAge: currentAge, peakNetWorth: a0, accumulationData: [], depletionData: [] };
 
-        const getFinalBalance = (testW) => {
-            const aw = getAw(testW);
-            const f = totalHorizon - testW;
-            if (rDec === 0) return aw - c * f;
-            // Correct Annuity Due formula per whitepaper Equation 19
-            return aw * Math.pow(1 + rDec, f) - c * ((Math.pow(1 + rDec, f + 1) - (1 + rDec)) / rDec);
+        const simulate = (testW) => {
+            let bal = a0;
+            let peak = a0;
+            let accData = [];
+            let depData = [];
+
+            const k = Math.floor(testW);
+            const delta = testW - k;
+
+            for (let i = 0; i <= totalHorizon; i++) {
+                const age = currentAge + i;
+                
+                // Trigger Windfall
+                if (age === wAge) bal += wAmt;
+                // Calculate Passive Income (persists in retirement)
+                const p = (age >= ssAge) ? ssAmt : 0;
+
+                if (i < k) {
+                    // Full working year
+                    accData.push({ x: age, y: bal });
+                    bal = bal * (1 + rAcc) + s + p;
+                    peak = Math.max(peak, bal);
+                } else if (i === k) {
+                    // Transition year (Fractional retirement)
+                    if (delta > 0) {
+                        accData.push({ x: age, y: bal });
+                        const balMid = bal * Math.pow(1 + rAcc, delta) + (s + p) * delta;
+                        bal = (balMid - (c - p) * (1 - delta)) * Math.pow(1 + rDec, 1 - delta);
+                        peak = Math.max(peak, balMid, bal);
+                        // Insert a mid-year point for visual clarity on the chart
+                        depData.push({ x: age + delta, y: Math.max(floor, balMid) });
+                    } else {
+                        // Integer transition
+                        depData.push({ x: age, y: Math.max(floor, bal) });
+                        bal = (bal - c + p) * (1 + rDec);
+                        peak = Math.max(peak, bal);
+                    }
+                } else if (i > k) {
+                    // Full retirement year
+                    depData.push({ x: age, y: Math.max(floor, bal) });
+                    bal = (bal - c + p) * (1 + rDec);
+                    peak = Math.max(peak, bal);
+                }
+            }
+            return { finalBal: bal, peak, accData, depData };
         };
 
         // Binary search for optimal working years w using bifurcated rates
-        const balAtH = getFinalBalance(totalHorizon);
-        const balAtZero = getFinalBalance(0);
+        const resAtH = simulate(totalHorizon);
+        const resAtZero = simulate(0);
 
-        if (balAtZero >= floor) {
+        if (resAtZero.finalBal >= floor) {
             w = 0;
-        } else if (balAtH < floor) {
+        } else if (resAtH.finalBal < floor) {
             w = totalHorizon;
         } else {
             let low = 0, high = totalHorizon;
             for (let i = 0; i < 60; i++) {
                 let mid = (low + high) / 2;
-                if (getFinalBalance(mid) < floor) low = mid;
+                if (simulate(mid).finalBal < floor) low = mid;
                 else high = mid;
             }
             w = (low + high) / 2;
         }
 
-        const accumulationData = [];
-        const depletionData = [];
-        const peakNetWorth = getAw(w);
-
-        for (let i = 0; i <= totalHorizon; i++) {
-            const currentAgePos = currentAge + i;
-
-            if (i <= w) {
-                let bal = getAw(i);
-                accumulationData.push({ x: currentAgePos, y: bal });
-            } 
-            
-            if (i >= Math.floor(w)) {
-                const yearsRetired = i - w;
-                let bal = 0;
-                if (rDec === 0) {
-                    bal = peakNetWorth - (c * yearsRetired);
-                } else {
-                    // Correct Annuity Due formula per whitepaper
-                    bal = peakNetWorth * Math.pow(1 + rDec, yearsRetired) - c * ((Math.pow(1 + rDec, yearsRetired + 1) - (1 + rDec)) / rDec);
-                }
-                // Clamp the depletion visualization cleanly to the user's legacy floor parameter
-                depletionData.push({ x: currentAgePos, y: Math.max(floor, bal) });
-            }
-        }
+        const finalResults = simulate(w);
 
         return {
             workingYears: w,
             retirementAge: currentAge + w,
-            peakNetWorth: peakNetWorth,
-            accumulationData: accumulationData,
-            depletionData: depletionData,
-            finalBalanceAtMaxWork: balAtH
+            peakNetWorth: finalResults.peak,
+            accumulationData: finalResults.accData,
+            depletionData: finalResults.depData,
+            finalBalanceAtMaxWork: resAtH.finalBal
         };
     }
 
@@ -1024,6 +1067,11 @@
     boxAxisMin.addEventListener('change', updateVisualization);
     boxAxisMax.addEventListener('change', updateVisualization);
     boxYMax.addEventListener('change', updateVisualization);
+
+    boxSsAmt.addEventListener('change', updateVisualization);
+    boxSsAge.addEventListener('change', updateVisualization);
+    boxWindfallAmt.addEventListener('change', updateVisualization);
+    boxWindfallAge.addEventListener('change', updateVisualization);
 
     loadParamsFromURL();
     updateVisualization();
