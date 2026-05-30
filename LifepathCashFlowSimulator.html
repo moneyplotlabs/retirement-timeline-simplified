@@ -700,7 +700,7 @@
         return milestones.filter(m => m.age <= age).pop() || milestones[0];
     }
 
-    function simulateLife(startAge, endAge, principal, rAcc, rDec, rAge) {
+    function simulateLife(startAge, endAge, principal, rAcc, rDec, rAge, planningEndAge) {
         const labels = [];
         const inflowData = [];
         const growthData = [];
@@ -715,7 +715,20 @@
 
         for (let t = startAge; t <= endAge; t++) {
             labels.push(t);
-            nwData.push(balance);
+
+            // Line chart reflects state at the start of age t
+            if (t <= planningEndAge + 1) {
+                nwData.push(balance);
+            } else {
+                nwData.push(null);
+            }
+
+            if (t > planningEndAge) {
+                inflowData.push(null);
+                outflowData.push(null);
+                growthData.push(null);
+                continue;
+            }
             
             const startBal = balance;
             const m = getMilestone(t);
@@ -753,16 +766,10 @@
                 outflowData.push(-m.spending);
                 balance = (balance - m.spending + passive + windfall) * (1 + rDec);
                 growth = balance - startBal + m.spending - passive - windfall;
+                peakNw = Math.max(peakNw, balance);
             }
             growthData.push(growth);
         }
-
-        // Final boundary point representing state at the end of the final year
-        labels.push(endAge + 1);
-        nwData.push(balance);
-        inflowData.push(null);
-        growthData.push(null);
-        outflowData.push(null);
 
         return { labels, inflowData, growthData, outflowData, nwData, finalBalance: balance, peakNw };
     }
@@ -780,10 +787,10 @@
 
         // Numerical Solver (Bisection)
         let w = 0;
-        // We allow working up until the end of the final year
-        const horizon = stopAge - currentAge;
-        const resAtH = simulateLife(currentAge, stopAge, principal, rAcc, rDec, currentAge + horizon);
-        const resAtStart = simulateLife(currentAge, stopAge, principal, rAcc, rDec, currentAge);
+        // Allow working through the final year by extending horizon to start of age stopAge + 1
+        const horizon = stopAge - currentAge + 1;
+        const resAtH = simulateLife(currentAge, stopAge, principal, rAcc, rDec, currentAge + horizon, stopAge);
+        const resAtStart = simulateLife(currentAge, stopAge, principal, rAcc, rDec, currentAge, stopAge);
 
         if (resAtStart.finalBalance >= floor) {
             w = 0;
@@ -793,7 +800,7 @@
             let low = currentAge, high = currentAge + horizon;
             for (let i = 0; i < 60; i++) {
                 let mid = (low + high) / 2;
-                let test = simulateLife(currentAge, stopAge, principal, rAcc, rDec, mid);
+                let test = simulateLife(currentAge, stopAge, principal, rAcc, rDec, mid, stopAge);
                 if (test.finalBalance < floor) low = mid;
                 else high = mid;
             }
@@ -801,7 +808,7 @@
         }
 
         const rAge = currentAge + w;
-        const finalSim = simulateLife(currentAge, stopAge, principal, rAcc, rDec, rAge);
+        const finalSim = simulateLife(currentAge, stopAge, principal, rAcc, rDec, rAge, stopAge);
         computedPeakCache = finalSim.peakNw;
 
         // Update Metrics
@@ -824,7 +831,7 @@
         let axisMax = boxAxisMax.value !== "" ? parseInt(boxAxisMax.value) : stopAge + 1;
         let yMaxConstraint = boxYMax.value !== "" ? parseFloat(boxYMax.value) : undefined;
 
-        const viewSim = simulateLife(currentAge, Math.max(stopAge, axisMax), principal, rAcc, rDec, rAge);
+        const viewSim = simulateLife(currentAge, Math.max(stopAge, axisMax), principal, rAcc, rDec, rAge, stopAge);
 
         chartInstance.data.labels = viewSim.labels;
         chartInstance.data.datasets[0].data = viewSim.inflowData;
