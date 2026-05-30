@@ -122,6 +122,20 @@
                 </div>
                 <button class="btn-lock" id="btn-lock-y" style="width: 100%; margin-top: 4px;">Lock Current Y</button>
 
+                <div class="advanced-row-y" style="margin-top: 8px;">
+                    <div class="x-input-pair">
+                        <div class="control-group">
+                            <label class="control-label">Chart Min Flow ($)</label>
+                            <input type="number" id="box-y-left-min" step="5000" value="" placeholder="Auto">
+                        </div>
+                        <div class="control-group">
+                            <label class="control-label">Chart Max Flow ($)</label>
+                            <input type="number" id="box-y-left-max" step="10000" value="" placeholder="Auto">
+                        </div>
+                    </div>
+                </div>
+                <button class="btn-lock" id="btn-lock-y-left" style="width: 100%; margin-top: 4px;">Lock Current Left Y</button>
+
                 <!-- Dynamic External Events -->
                 <div style="margin-top: 16px; border-top: 1px dashed var(--border); padding-top: 12px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -192,9 +206,12 @@
     const boxAxisMin = document.getElementById('box-axis-min');
     const boxAxisMax = document.getElementById('box-axis-max');
     const boxYMax = document.getElementById('box-y-max');
+    const boxYLeftMin = document.getElementById('box-y-left-min');
+    const boxYLeftMax = document.getElementById('box-y-left-max');
     const mainLockBtn = document.getElementById('main-chart-lock');
     const btnLockX = document.getElementById('btn-lock-x');
     const btnLockY = document.getElementById('btn-lock-y');
+    const btnLockYLeft = document.getElementById('btn-lock-y-left');
     
     const ssList = document.getElementById('ss-list');
     const windfallList = document.getElementById('windfall-list');
@@ -203,6 +220,8 @@
 
     let chartInstance = null;
     let ratesLinked = false;
+    let computedMinFlowCache = 0;
+    let computedPeakFlowCache = 0;
     let computedPeakCache = 0;
     
     // Internal data structure
@@ -320,6 +339,8 @@
         
         let balance = principal;
         let peakNw = principal;
+        let peakFlow = 0;
+        let minFlow = 0;
 
         const k = Math.floor(rAge);
         const delta = rAge - k;
@@ -386,9 +407,14 @@
                 peakNw = Math.max(peakNw, balance);
             }
             growthData.push({ x: t, y: growth });
+            // Peak flow for stacked bars is sum of positive contributors (Inflow + Growth)
+            let currentPositiveFlow = Math.max(0, (inflowData[inflowData.length-1].y || 0)) + Math.max(0, (growthData[growthData.length-1].y || 0));
+            peakFlow = Math.max(peakFlow, currentPositiveFlow);
+            let currentNegativeFlow = (outflowData[outflowData.length-1].y || 0);
+            minFlow = Math.min(minFlow, currentNegativeFlow);
         }
 
-        return { labels, inflowData, growthData, outflowData, nwData, finalBalance: balance, peakNw };
+        return { labels, inflowData, growthData, outflowData, nwData, finalBalance: balance, peakNw, peakFlow, minFlow };
     }
 
     function updateSimulation() {
@@ -427,6 +453,8 @@
         const rAge = currentAge + w;
         const finalSim = simulateLife(currentAge, stopAge, principal, rAcc, rDec, rAge, stopAge);
         computedPeakCache = finalSim.peakNw;
+        computedMinFlowCache = finalSim.minFlow;
+        computedPeakFlowCache = finalSim.peakFlow;
 
         // Update Metrics
         mWorkYears.innerText = w.toFixed(1) + ' Years';
@@ -447,6 +475,8 @@
         let axisMin = boxAxisMin.value !== "" ? parseInt(boxAxisMin.value) : currentAge;
         let axisMax = boxAxisMax.value !== "" ? parseInt(boxAxisMax.value) : stopAge + 1;
         let yMaxConstraint = boxYMax.value !== "" ? parseFloat(boxYMax.value) : undefined;
+        let yLeftMinConstraint = boxYLeftMin.value !== "" ? parseFloat(boxYLeftMin.value) : undefined;
+        let yLeftMaxConstraint = boxYLeftMax.value !== "" ? parseFloat(boxYLeftMax.value) : undefined;
 
         const viewSim = simulateLife(currentAge, Math.max(stopAge, axisMax), principal, rAcc, rDec, rAge, stopAge);
 
@@ -458,6 +488,8 @@
 
         chartInstance.options.scales.x.min = axisMin;
         chartInstance.options.scales.x.max = axisMax;
+        chartInstance.options.scales.y.min = yLeftMinConstraint;
+        chartInstance.options.scales.y.max = yLeftMaxConstraint;
         chartInstance.options.scales.yNetWorth.max = yMaxConstraint;
         
         chartInstance.update('none'); // Use 'none' for instant reactive feel
@@ -479,6 +511,8 @@
         if(boxAxisMin.value !== "") params.set('xMin', boxAxisMin.value);
         if(boxAxisMax.value !== "") params.set('xMax', boxAxisMax.value);
         if(boxYMax.value !== "") params.set('yMax', boxYMax.value);
+        if(boxYLeftMin.value !== "") params.set('yLeftMin', boxYLeftMin.value);
+        if(boxYLeftMax.value !== "") params.set('yLeftMax', boxYLeftMax.value);
         
         // Compact milestones for URL: [age, income, savings, spending]
         const mData = milestones.map(m => [m.age, m.income, m.savings, m.spending]);
@@ -499,6 +533,8 @@
         if (params.has('xMin')) boxAxisMin.value = params.get('xMin');
         if (params.has('xMax')) boxAxisMax.value = params.get('xMax');
         if (params.has('yMax')) boxYMax.value = params.get('yMax');
+        if (params.has('yLeftMin')) boxYLeftMin.value = params.get('yLeftMin');
+        if (params.has('yLeftMax')) boxYLeftMax.value = params.get('yLeftMax');
         if (params.has('ss')) {
             const data = JSON.parse(params.get('ss'));
             ssEvents = data.map(d => ({ id: Math.random().toString(36).substr(2,9), amt: d[0], age: d[1] }));
@@ -515,7 +551,7 @@
             inputGrowthDec.disabled = boxGrowthDec.disabled = true;
         }
 
-        if (boxAxisMin.value !== "" || boxAxisMax.value !== "" || boxYMax.value !== "") {
+        if (boxAxisMin.value !== "" || boxAxisMax.value !== "" || boxYMax.value !== "" || boxYLeftMin.value !== "" || boxYLeftMax.value !== "") {
             mainLockBtn.textContent = "Unlock Auto-Scale";
             mainLockBtn.classList.add('locked');
         }
@@ -588,6 +624,14 @@
             btnLockY.textContent = "Lock Current";
             btnLockY.classList.remove('locked');
         }
+
+        if (boxYLeftMin.value !== "" || boxYLeftMax.value !== "") {
+            btnLockYLeft.textContent = "Unlock Auto";
+            btnLockYLeft.classList.add('locked');
+        } else {
+            btnLockYLeft.textContent = "Lock Current";
+            btnLockYLeft.classList.remove('locked');
+        }
     }
 
     btnLockX.addEventListener('click', () => {
@@ -615,9 +659,35 @@
         updateSimulation();
     });
 
+    btnLockYLeft.addEventListener('click', () => {
+        if (boxYLeftMin.value !== "" || boxYLeftMax.value !== "") {
+            boxYLeftMin.value = "";
+            boxYLeftMax.value = "";
+        } else {
+            if (computedMinFlowCache < 0) {
+                const rawMin = computedMinFlowCache;
+                let snappedFloor = Math.floor(rawMin);
+                if (rawMin <= -100000) snappedFloor = Math.floor(rawMin / 25000) * 25000;
+                else snappedFloor = Math.floor(rawMin / 5000) * 5000;
+                boxYLeftMin.value = snappedFloor;
+            } else {
+                boxYLeftMin.value = "0";
+            }
+
+            const rawPeak = computedPeakFlowCache;
+            let snappedCeiling = Math.round(rawPeak);
+            if (rawPeak >= 500000) snappedCeiling = Math.ceil(rawPeak / 100000) * 100000;
+            else if (rawPeak >= 100000) snappedCeiling = Math.ceil(rawPeak / 25000) * 25000;
+            else if (rawPeak >= 50000) snappedCeiling = Math.ceil(rawPeak / 10000) * 10000;
+            else snappedCeiling = Math.ceil(rawPeak / 5000) * 5000;
+            boxYLeftMax.value = snappedCeiling;
+        }
+        updateSimulation();
+    });
+
     mainLockBtn.addEventListener('click', () => {
         // If either X or Y is currently unlocked, lock everything to current view
-        if (boxAxisMin.value === "" || boxAxisMax.value === "" || boxYMax.value === "") {
+        if (boxAxisMin.value === "" || boxAxisMax.value === "" || boxYMax.value === "" || boxYLeftMin.value === "" || boxYLeftMax.value === "") {
             boxAxisMin.value = parseInt(boxStartAge.value) || 0;
             boxAxisMax.value = (parseInt(boxEndAge.value) || 95) + 1;
             
@@ -629,12 +699,33 @@
                 else snappedCeiling = Math.ceil(rawPeak / 10000) * 10000;
                 boxYMax.value = snappedCeiling;
             }
+
+            if (computedMinFlowCache < 0) {
+                const rawMin = computedMinFlowCache;
+                let snappedFloor = Math.floor(rawMin);
+                if (rawMin <= -100000) snappedFloor = Math.floor(rawMin / 25000) * 25000;
+                else snappedFloor = Math.floor(rawMin / 5000) * 5000;
+                boxYLeftMin.value = snappedFloor;
+            } else {
+                boxYLeftMin.value = "0";
+            }
+
+            const rawPeakFlow = computedPeakFlowCache;
+            let snappedCeilingFlow = Math.round(rawPeakFlow);
+            if (rawPeakFlow >= 500000) snappedCeilingFlow = Math.ceil(rawPeakFlow / 100000) * 100000;
+            else if (rawPeakFlow >= 100000) snappedCeilingFlow = Math.ceil(rawPeakFlow / 25000) * 25000;
+            else if (rawPeakFlow >= 50000) snappedCeilingFlow = Math.ceil(rawPeakFlow / 10000) * 10000;
+            else snappedCeilingFlow = Math.ceil(rawPeakFlow / 5000) * 5000;
+            boxYLeftMax.value = snappedCeilingFlow;
+
             mainLockBtn.textContent = "Unlock Auto-Scale";
             mainLockBtn.classList.add('locked');
         } else {
             boxAxisMin.value = "";
             boxAxisMax.value = "";
             boxYMax.value = "";
+            boxYLeftMin.value = "";
+            boxYLeftMax.value = "";
             mainLockBtn.textContent = "Lock Scale for Comparison";
             mainLockBtn.classList.remove('locked');
         }
@@ -805,6 +896,8 @@
     boxAxisMin.addEventListener('change', updateSimulation);
     boxAxisMax.addEventListener('change', updateSimulation);
     boxYMax.addEventListener('change', updateSimulation);
+    boxYLeftMin.addEventListener('change', updateSimulation);
+    boxYLeftMax.addEventListener('change', updateSimulation);
 
     function renderDynamicEvents() {
         ssList.innerHTML = '';
