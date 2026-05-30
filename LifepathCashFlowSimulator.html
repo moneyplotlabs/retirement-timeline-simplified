@@ -681,11 +681,15 @@
                 plugins: {
                     legend: { labels: { color: '#f8fafc' } },
                     tooltip: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false,
                         callbacks: {
+                            title: (context) => 'Age ' + context[0].parsed.x.toFixed(1),
                             label: (context) => {
                                 let label = context.dataset.label || '';
                                 if (label) label += ': ';
-                                label += '$' + Math.abs(context.raw).toLocaleString();
+                                label += '$' + Math.abs(context.parsed.y).toLocaleString();
                                 return label;
                             }
                         }
@@ -718,15 +722,15 @@
 
             // Line chart reflects state at the start of age t
             if (t <= planningEndAge + 1) {
-                nwData.push(balance);
+                nwData.push({ x: t, y: balance });
             } else {
-                nwData.push(null);
+                nwData.push({ x: t, y: null });
             }
 
             if (t > planningEndAge) {
-                inflowData.push(null);
-                outflowData.push(null);
-                growthData.push(null);
+                inflowData.push({ x: t, y: null });
+                outflowData.push({ x: t, y: null });
+                growthData.push({ x: t, y: null });
                 continue;
             }
             
@@ -743,8 +747,8 @@
 
             if (t < k) {
                 // Full working year
-                inflowData.push(m.income + passive + windfall);
-                outflowData.push(-m.spending);
+                inflowData.push({ x: t, y: m.income + passive + windfall });
+                outflowData.push({ x: t, y: -m.spending });
                 balance = balance * (1 + rAcc) + m.savings + passive + windfall;
                 growth = balance - startBal - m.savings - passive - windfall;
                 peakNw = Math.max(peakNw, balance);
@@ -753,22 +757,28 @@
                 const workFrac = delta;
                 const retireFrac = 1 - delta;
 
-                inflowData.push((m.income * workFrac) + passive + windfall);
-                outflowData.push(-m.spending);
+                inflowData.push({ x: t, y: (m.income * workFrac) + passive + windfall });
+                outflowData.push({ x: t, y: -m.spending });
 
                 const balanceMid = balance * Math.pow(1 + rAcc, workFrac) + (m.savings * workFrac) + (passive * workFrac) + (windfall * workFrac);
+                
+                // Insert intermediate peak point for the line chart
+                if (delta > 0 && t <= planningEndAge) {
+                    nwData.push({ x: t + delta, y: balanceMid });
+                }
+
                 balance = (balanceMid - m.spending * retireFrac + (passive * retireFrac) + (windfall * retireFrac)) * Math.pow(1 + rDec, retireFrac);
                 growth = balance - startBal - (m.savings * workFrac) + (m.spending * retireFrac) - passive - windfall;
                 peakNw = Math.max(peakNw, balanceMid, balance);
             } else {
                 // Full retirement year
-                inflowData.push(passive + windfall);
-                outflowData.push(-m.spending);
+                inflowData.push({ x: t, y: passive + windfall });
+                outflowData.push({ x: t, y: -m.spending });
                 balance = (balance - m.spending + passive + windfall) * (1 + rDec);
                 growth = balance - startBal + m.spending - passive - windfall;
                 peakNw = Math.max(peakNw, balance);
             }
-            growthData.push(growth);
+            growthData.push({ x: t, y: growth });
         }
 
         return { labels, inflowData, growthData, outflowData, nwData, finalBalance: balance, peakNw };
