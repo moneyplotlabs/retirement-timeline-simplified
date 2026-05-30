@@ -733,7 +733,7 @@
                 inflowData.push(m.income + passive + windfall);
                 outflowData.push(-m.spending);
                 balance = balance * (1 + rAcc) + m.savings + passive + windfall;
-                growth = balance - startBal - m.savings;
+                growth = balance - startBal - m.savings - passive - windfall;
                 peakNw = Math.max(peakNw, balance);
             } else if (t === k) {
                 // Transition year (Fractional retirement)
@@ -745,7 +745,7 @@
 
                 const balanceMid = balance * Math.pow(1 + rAcc, workFrac) + (m.savings * workFrac) + (passive * workFrac) + (windfall * workFrac);
                 balance = (balanceMid - m.spending * retireFrac + (passive * retireFrac) + (windfall * retireFrac)) * Math.pow(1 + rDec, retireFrac);
-                growth = balance - startBal - (m.savings * workFrac) + (m.spending * retireFrac);
+                growth = balance - startBal - (m.savings * workFrac) + (m.spending * retireFrac) - passive - windfall;
                 peakNw = Math.max(peakNw, balanceMid, balance);
             } else {
                 // Full retirement year
@@ -760,9 +760,9 @@
         // Final boundary point representing state at the end of the final year
         labels.push(endAge + 1);
         nwData.push(balance);
-        inflowData.push(0);
-        growthData.push(0);
-        outflowData.push(0);
+        inflowData.push(null);
+        growthData.push(null);
+        outflowData.push(null);
 
         return { labels, inflowData, growthData, outflowData, nwData, finalBalance: balance, peakNw };
     }
