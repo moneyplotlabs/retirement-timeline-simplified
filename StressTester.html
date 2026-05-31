@@ -81,9 +81,9 @@
             <div class="control-group">
                 <label class="control-label">Accumulation Growth Method</label>
                 <select id="select-growth-method-acc">
-                    <option value="60-40" selected>60/40 US-Stocks/US-Bonds</option>
-                    <option value="equities">US Equities</option>
-                    <option value="manual">Mean &amp; Standard Deviation</option>
+                    <option value="60-40" selected>60/40 Stocks/Bonds — real μ 5.9%, σ 12.5%</option>
+                    <option value="equities">US Equities (S&amp;P 500) — real μ 8.8%, σ 19.6%</option>
+                    <option value="manual">Manual — Mean &amp; Standard Deviation</option>
                 </select>
                 <div id="manual-inputs-acc" class="manual-inputs-grid">
                     <div class="control-group">
@@ -111,9 +111,9 @@
                         <button class="btn-lock btn-lock-sm" id="btn-link-rates">Link to Accumulation</button>
                     </div>
                     <select id="select-growth-method-dec">
-                        <option value="60-40" selected>60/40 US-Stocks/US-Bonds</option>
-                        <option value="equities">US Equities</option>
-                        <option value="manual">Mean &amp; Standard Deviation</option>
+                        <option value="60-40" selected>60/40 Stocks/Bonds — real μ 5.9%, σ 12.5%</option>
+                        <option value="equities">US Equities (S&amp;P 500) — real μ 8.8%, σ 19.6%</option>
+                        <option value="manual">Manual — Mean &amp; Standard Deviation</option>
                     </select>
                     <div id="manual-inputs-dec" class="manual-inputs-grid">
                         <div class="control-group">
@@ -202,10 +202,23 @@
     <div class="doc-footer">
         <div class="doc-notes">
             <p>
-                <strong>Data Attribution:</strong> Historical S&amp;P 500 and US Treasury Bond returns utilized
-                in the stochastic engines (Modules 3 and 4) are sourced from
-                <a href="https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html" target="_blank" class="link-accent">Aswath Damodaran's dataset at NYU Stern</a>.
-                Figures represent real annual returns adjusted for inflation via CPI.
+                <strong>Data Attribution:</strong> All historical return series cover <strong>1928–2024 (97 years)</strong>
+                and are expressed as <strong>real (inflation-adjusted) annual returns</strong>.
+            </p>
+            <p>
+                <strong>US Equities (S&amp;P 500)</strong> — nominal total returns (price + dividends) sourced from
+                <a href="https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html" target="_blank" class="link-accent">Aswath Damodaran, NYU Stern</a>.
+                CPI deflation applied using U.S. Bureau of Labor Statistics data via
+                <a href="https://www.bls.gov/cpi/" target="_blank" class="link-accent">BLS</a> /
+                <a href="https://shillerdata.com" target="_blank" class="link-accent">Robert Shiller</a>.
+                Real arithmetic mean <strong>8.8%</strong>, std dev <strong>19.6%</strong>, geometric CAGR <strong>6.9%</strong>.
+            </p>
+            <p>
+                <strong>60/40 Portfolio</strong> (60% S&amp;P 500 + 40% 10-Year US Treasury Bond) — bond total returns
+                (coupon + price appreciation) from
+                <a href="https://fred.stlouisfed.org" target="_blank" class="link-accent">FRED, St. Louis Fed</a>
+                as compiled by Damodaran; blended and deflated by CPI.
+                Real arithmetic mean <strong>5.9%</strong>, std dev <strong>12.5%</strong>, geometric CAGR <strong>5.1%</strong>.
             </p>
         </div>
     </div>
