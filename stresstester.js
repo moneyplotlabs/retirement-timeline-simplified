@@ -137,25 +137,28 @@ function getReturnSeries(method, mean, std, count) {
 
 // ── Chart Init ────────────────────────────────────────────────
 // Dataset index map:
-//   0  Inflow (Income)      — bar, stack:flow
-//   1  Outflow (Spending)   — bar, stack:flow
-//   2  Asset Growth         — bar, stack:flow
-//   3  NW p10               — line, fill to p90 (outer band, lightest)
-//   4  NW p25               — line, fill to p75 (inner band)
-//   5  NW p50  (median)     — line, solid (no fill)
-//   6  NW p75               — line, fill:false (upper bound of inner band)
-//   7  NW p90               — line, fill:false (upper bound of outer band)
+//   0  Inflow (Income)         — bar, stack:flow
+//   1  Outflow (Spending)      — bar, stack:flow
+//   2  Asset Growth (median)   — bar, stack:flow
+//   3  NW p10  (10th pct)      — dashed line, red,    visible by default
+//   4  NW p25  (25th pct)      — dashed line, amber,  visible by default
+//   5  NW p50  (median)        — solid line,  blue,   always visible
+//   6  NW p75  (75th pct)      — dashed line, light,  HIDDEN by default
+//   7  NW p90  (90th pct)      — dashed line, lighter, HIDDEN by default, fills to p75
+
+let upperBandVisible = false;
 
 function initChart() {
     const ctx = document.getElementById('lifepathChart').getContext('2d');
 
     const lineBase = {
         type:        'line',
-        borderWidth: 0,
+        borderWidth: 1.5,
         pointRadius: 0,
         yAxisID:     'yNetWorth',
         tension:     0.1,
         spanGaps:    true,
+        fill:        false,
     };
 
     chartInstance = new Chart(ctx, {
@@ -188,48 +191,54 @@ function initChart() {
                     borderWidth:     1,
                     stack:           'flow',
                 },
-                // ── NW percentile fan ─────────────────────────────────
-                // p10 fills up to p90 → outer band (lightest)
+                // ── NW percentile lines ───────────────────────────────
+                // p10 — dashed red, shown
                 {
                     ...lineBase,
-                    label:           'NW 10th–90th percentile',
-                    data:            [],
-                    borderColor:     'transparent',
-                    backgroundColor: 'rgba(59, 130, 246, 0.10)',
-                    fill:            '+4',   // fill to dataset index+4 = p90
+                    label:       'NW p10 (10th pct)',
+                    data:        [],
+                    borderColor: 'rgba(239, 68, 68, 0.85)',
+                    borderDash:  [4, 4],
+                    hidden:      false,
                 },
-                // p25 fills up to p75 → inner band
+                // p25 — dashed amber, shown
                 {
                     ...lineBase,
-                    label:           'NW 25th–75th percentile',
-                    data:            [],
-                    borderColor:     'transparent',
-                    backgroundColor: 'rgba(59, 130, 246, 0.18)',
-                    fill:            '+2',   // fill to dataset index+2 = p75
+                    label:       'NW p25 (25th pct)',
+                    data:        [],
+                    borderColor: 'rgba(251, 146, 60, 0.9)',
+                    borderDash:  [4, 4],
+                    hidden:      false,
                 },
-                // p50 — solid median line, no fill
+                // p50 — solid blue, always shown
                 {
                     ...lineBase,
-                    label:       'Net Worth (median)',
+                    label:       'NW p50 (median)',
                     data:        [],
                     borderColor: '#3b82f6',
                     borderWidth: 2.5,
-                    fill:        false,
+                    hidden:      false,
                 },
-                // p75 — upper edge of inner band (no fill, used as fill target)
+                // p75 — dashed light blue, hidden by default
+                // fill: '+1' set by applyUpperBandVisibility() when shown
                 {
                     ...lineBase,
-                    label:       'NW p75',
-                    data:        [],
-                    borderColor: 'rgba(59, 130, 246, 0.25)',
-                    fill:        false,
+                    label:           'NW p75 (75th pct)',
+                    data:            [],
+                    borderColor:     'rgba(99, 179, 237, 0.75)',
+                    borderDash:      [4, 4],
+                    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                    hidden:          true,
+                    fill:            false,
                 },
-                // p90 — upper edge of outer band
+                // p90 — dashed lighter blue, hidden by default (upper fill target for p75)
                 {
                     ...lineBase,
-                    label:       'NW p90',
+                    label:       'NW p90 (90th pct)',
                     data:        [],
-                    borderColor: 'rgba(59, 130, 246, 0.12)',
+                    borderColor: 'rgba(147, 210, 252, 0.65)',
+                    borderDash:  [4, 4],
+                    hidden:      true,
                     fill:        false,
                 },
             ],
@@ -263,13 +272,7 @@ function initChart() {
             },
             plugins: {
                 legend: {
-                    labels: {
-                        color:  '#f8fafc',
-                        // Hide the p75/p90 band-edge lines and p10/p25 fill-only entries from legend
-                        filter: (item) => !['NW p75', 'NW p90',
-                                             'NW 10th–90th percentile',
-                                             'NW 25th–75th percentile'].includes(item.text),
-                    },
+                    labels: { color: '#f8fafc' },
                 },
                 tooltip: {
                     mode:      'index',
@@ -278,13 +281,8 @@ function initChart() {
                     callbacks: {
                         title: (ctx) => 'Age ' + ctx[0].parsed.x,
                         label: (ctx) => {
-                            const label = ctx.dataset.label || '';
-                            // Skip the invisible band-edge datasets
-                            if (['NW p75', 'NW p90',
-                                 'NW 10th–90th percentile',
-                                 'NW 25th–75th percentile'].includes(label)) return null;
-                            if (ctx.parsed.y === null) return null;
-                            return label + ': $' + Math.abs(Math.round(ctx.parsed.y)).toLocaleString();
+                            if (ctx.dataset.hidden || ctx.parsed.y === null) return null;
+                            return ctx.dataset.label + ': $' + Math.abs(Math.round(ctx.parsed.y)).toLocaleString();
                         },
                     },
                 },
@@ -293,6 +291,26 @@ function initChart() {
     });
     loader.style.display = 'none';
 }
+
+// ── Upper Band Toggle ─────────────────────────────────────────
+function applyUpperBandVisibility() {
+    if (!chartInstance) return;
+    const ds = chartInstance.data.datasets;
+    ds[6].hidden = !upperBandVisible;
+    ds[7].hidden = !upperBandVisible;
+    // Only apply fill when visible; Chart.js skips fill for hidden datasets unreliably
+    ds[6].fill = upperBandVisible ? '+1' : false;
+    chartInstance.update('none');
+
+    const btn = document.getElementById('btn-toggle-upper-band');
+    btn.textContent = upperBandVisible ? 'Hide 75th / 90th' : 'Show 75th / 90th';
+    btn.classList.toggle('locked', upperBandVisible);
+}
+
+document.getElementById('btn-toggle-upper-band').addEventListener('click', () => {
+    upperBandVisible = !upperBandVisible;
+    applyUpperBandVisibility();
+});
 
 // ── Simulation ────────────────────────────────────────────────
 function getMilestone(age) {
@@ -521,6 +539,7 @@ function updateSimulation() {
     chartInstance.options.scales.y.max         = yLeftMaxCon;
     chartInstance.options.scales.yNetWorth.max = yMaxConstraint;
     chartInstance.update('none');
+    applyUpperBandVisibility();
 
     updateButtonStates();
     updateURLParams();

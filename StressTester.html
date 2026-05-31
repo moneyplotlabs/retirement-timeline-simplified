@@ -33,7 +33,10 @@
         <div>
             <div class="chart-header">
                 <span class="chart-label">Net Worth Percentile Fan + Median Cash Flow</span>
-                <button class="btn-lock btn-lock-chart" id="main-chart-lock">Lock Scale for Comparison</button>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn-lock btn-lock-chart" id="btn-toggle-upper-band">Show 75th / 90th</button>
+                    <button class="btn-lock btn-lock-chart" id="main-chart-lock">Lock Scale for Comparison</button>
+                </div>
             </div>
             <div class="chart-container">
                 <canvas id="lifepathChart"></canvas>
