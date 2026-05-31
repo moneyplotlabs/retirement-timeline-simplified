@@ -32,7 +32,7 @@
         <!-- Chart -->
         <div>
             <div class="chart-header">
-                <span class="chart-label">Stochastic Trajectory Projection</span>
+                <span class="chart-label">Net Worth Percentile Fan + Median Cash Flow</span>
                 <button class="btn-lock btn-lock-chart" id="main-chart-lock">Lock Scale for Comparison</button>
             </div>
             <div class="chart-container">
@@ -201,6 +201,14 @@
 
     <div class="doc-footer">
         <div class="doc-notes">
+            <p>
+                <strong>Methodology:</strong> Runs <strong>1,000 Monte Carlo iterations</strong>, sampling
+                historical annual returns at random with replacement (bootstrap resampling). The net worth chart
+                displays a <strong>percentile fan</strong>: outer band = 10th–90th percentile, inner band =
+                25th–75th percentile, solid line = 50th percentile (median). Cash flow bars reflect the
+                deterministic median path using the arithmetic mean of the chosen return distribution.
+                Success rate = share of runs ending above the legacy floor.
+            </p>
             <p>
                 <strong>Data Attribution:</strong> All historical return series cover <strong>1928–2024 (97 years)</strong>
                 and are expressed as <strong>real (inflation-adjusted) annual returns</strong>.
