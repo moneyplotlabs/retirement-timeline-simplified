@@ -88,8 +88,6 @@ const hist6040 = [
 let chartInstance         = null;
 let ratesLinked           = false;
 let computedPeakCache     = 0;
-let computedMinFlowCache  = 0;
-let computedPeakFlowCache = 0;
 
 let milestones     = [];
 let ssEvents       = [];
@@ -106,18 +104,6 @@ function snapCeiling(rawPeak) {
     if (rawPeak >= 1000000) return Math.ceil(rawPeak / 250000) * 250000;
     if (rawPeak >= 250000)  return Math.ceil(rawPeak / 50000)  * 50000;
     return Math.ceil(rawPeak / 10000) * 10000;
-}
-
-function snapFloor(rawMin) {
-    if (rawMin <= -100000) return Math.floor(rawMin / 25000) * 25000;
-    return Math.floor(rawMin / 5000) * 5000;
-}
-
-function snapFlowCeiling(rawPeak) {
-    if (rawPeak >= 500000) return Math.ceil(rawPeak / 100000) * 100000;
-    if (rawPeak >= 100000) return Math.ceil(rawPeak / 25000)  * 25000;
-    if (rawPeak >= 50000)  return Math.ceil(rawPeak / 10000)  * 10000;
-    return Math.ceil(rawPeak / 5000) * 5000;
 }
 
 // ── Return Series Generation ──────────────────────────────────
@@ -306,7 +292,8 @@ function simulateLife(startAge, endAge, principal, rAge, planningEndAge, returns
 
         const posFlow = Math.max(0, inflowData[inflowData.length - 1].y || 0)
                       + Math.max(0, growthData[growthData.length - 1].y || 0);
-        const negFlow = outflowData[outflowData.length - 1].y || 0;
+        const negFlow = (outflowData[outflowData.length - 1].y || 0)
+                      + Math.min(0, growthData[growthData.length - 1].y || 0);
         peakFlow = Math.max(peakFlow, posFlow);
         minFlow  = Math.min(minFlow,  negFlow);
     }
@@ -346,10 +333,8 @@ function updateSimulation() {
         const sim    = simulateLife(currentAge, stopAge, principal, rAge, stopAge, retAcc, retDec);
         if (sim.finalBalance >= floor) successes++;
         if (i === 0) {
-            firstPath             = sim;
-            computedPeakCache     = sim.peakNw;
-            computedMinFlowCache  = sim.minFlow;
-            computedPeakFlowCache = sim.peakFlow;
+            firstPath         = sim;
+            computedPeakCache = sim.peakNw;
         }
     }
 
@@ -442,8 +427,9 @@ btnLockX.addEventListener('click', () => {
         boxAxisMin.value = "";
         boxAxisMax.value = "";
     } else {
-        boxAxisMin.value = parseInt(boxStartAge.value) || 0;
-        boxAxisMax.value = (parseInt(boxEndAge.value) || 95) + 1;
+        const xScale = chartInstance?.scales?.x;
+        boxAxisMin.value = xScale ? Math.round(xScale.min) : parseInt(boxStartAge.value) || 0;
+        boxAxisMax.value = xScale ? Math.round(xScale.max) : (parseInt(boxEndAge.value) || 95) + 1;
     }
     updateSimulation();
 });
@@ -451,8 +437,9 @@ btnLockX.addEventListener('click', () => {
 btnLockY.addEventListener('click', () => {
     if (boxYMax.value !== "") {
         boxYMax.value = "";
-    } else if (computedPeakCache > 0) {
-        boxYMax.value = snapCeiling(computedPeakCache);
+    } else {
+        const yNwScale = chartInstance?.scales?.yNetWorth;
+        if (yNwScale) boxYMax.value = Math.round(yNwScale.max);
     }
     updateSimulation();
 });
@@ -462,8 +449,11 @@ btnLockYLeft.addEventListener('click', () => {
         boxYLeftMin.value = "";
         boxYLeftMax.value = "";
     } else {
-        boxYLeftMin.value = computedMinFlowCache < 0 ? snapFloor(computedMinFlowCache) : "0";
-        boxYLeftMax.value = snapFlowCeiling(computedPeakFlowCache);
+        const yScale = chartInstance?.scales?.y;
+        if (yScale) {
+            boxYLeftMin.value = Math.round(yScale.min);
+            boxYLeftMax.value = Math.round(yScale.max);
+        }
     }
     updateSimulation();
 });
@@ -473,11 +463,12 @@ mainLockBtn.addEventListener('click', () => {
                    && boxYMax.value     !== "" && boxYLeftMin.value !== ""
                    && boxYLeftMax.value !== "";
     if (!allLocked) {
-        boxAxisMin.value  = parseInt(boxStartAge.value) || 0;
-        boxAxisMax.value  = (parseInt(boxEndAge.value) || 95) + 1;
-        if (computedPeakCache > 0) boxYMax.value = snapCeiling(computedPeakCache);
-        boxYLeftMin.value = computedMinFlowCache < 0 ? snapFloor(computedMinFlowCache) : "0";
-        boxYLeftMax.value = snapFlowCeiling(computedPeakFlowCache);
+        const xScale   = chartInstance?.scales?.x;
+        const yNwScale = chartInstance?.scales?.yNetWorth;
+        const yScale   = chartInstance?.scales?.y;
+        if (xScale)   { boxAxisMin.value  = Math.round(xScale.min);   boxAxisMax.value  = Math.round(xScale.max); }
+        if (yNwScale) { boxYMax.value     = Math.round(yNwScale.max); }
+        if (yScale)   { boxYLeftMin.value = Math.round(yScale.min);   boxYLeftMax.value = Math.round(yScale.max); }
         mainLockBtn.textContent = "Unlock Auto-Scale";
         mainLockBtn.classList.add('locked');
     } else {
