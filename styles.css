@@ -225,7 +225,6 @@ input[type="range"]::-webkit-slider-thumb:hover {
     text-align: left;
 }
 
-/* ADD THIS SPECIFICITY OVERRIDE */
 .interactive-row input[type="number"] {
     width: auto;
 }

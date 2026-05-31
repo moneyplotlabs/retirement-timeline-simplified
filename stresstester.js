@@ -39,10 +39,13 @@ const boxLegacyFloor      = document.getElementById('box-legacy-floor');
 const boxAxisMin          = document.getElementById('box-axis-min');
 const boxAxisMax          = document.getElementById('box-axis-max');
 const boxYMax             = document.getElementById('box-y-max');
+const boxYLeftMin         = document.getElementById('box-y-left-min');
+const boxYLeftMax         = document.getElementById('box-y-left-max');
 
 const mainLockBtn         = document.getElementById('main-chart-lock');
 const btnLockX            = document.getElementById('btn-lock-x');
 const btnLockY            = document.getElementById('btn-lock-y');
+const btnLockYLeft        = document.getElementById('btn-lock-y-left');
 
 const ssList              = document.getElementById('ss-list');
 const windfallList        = document.getElementById('windfall-list');
@@ -82,9 +85,11 @@ const hist6040 = [
 ];
 
 // ── State ─────────────────────────────────────────────────────
-let chartInstance      = null;
-let ratesLinked        = false;
-let computedPeakCache  = 0;
+let chartInstance         = null;
+let ratesLinked           = false;
+let computedPeakCache     = 0;
+let computedMinFlowCache  = 0;
+let computedPeakFlowCache = 0;
 
 let milestones     = [];
 let ssEvents       = [];
@@ -101,6 +106,18 @@ function snapCeiling(rawPeak) {
     if (rawPeak >= 1000000) return Math.ceil(rawPeak / 250000) * 250000;
     if (rawPeak >= 250000)  return Math.ceil(rawPeak / 50000)  * 50000;
     return Math.ceil(rawPeak / 10000) * 10000;
+}
+
+function snapFloor(rawMin) {
+    if (rawMin <= -100000) return Math.floor(rawMin / 25000) * 25000;
+    return Math.floor(rawMin / 5000) * 5000;
+}
+
+function snapFlowCeiling(rawPeak) {
+    if (rawPeak >= 500000) return Math.ceil(rawPeak / 100000) * 100000;
+    if (rawPeak >= 100000) return Math.ceil(rawPeak / 25000)  * 25000;
+    if (rawPeak >= 50000)  return Math.ceil(rawPeak / 10000)  * 10000;
+    return Math.ceil(rawPeak / 5000) * 5000;
 }
 
 // ── Return Series Generation ──────────────────────────────────
@@ -221,6 +238,8 @@ function simulateLife(startAge, endAge, principal, rAge, planningEndAge, returns
 
     let balance = principal;
     let peakNw  = principal;
+    let peakFlow = 0;
+    let minFlow  = 0;
 
     const k     = Math.floor(rAge);
     const delta = rAge - k;
@@ -284,9 +303,15 @@ function simulateLife(startAge, endAge, principal, rAge, planningEndAge, returns
         }
 
         growthData.push({ x: t, y: growth });
+
+        const posFlow = Math.max(0, inflowData[inflowData.length - 1].y || 0)
+                      + Math.max(0, growthData[growthData.length - 1].y || 0);
+        const negFlow = outflowData[outflowData.length - 1].y || 0;
+        peakFlow = Math.max(peakFlow, posFlow);
+        minFlow  = Math.min(minFlow,  negFlow);
     }
 
-    return { labels, inflowData, growthData, outflowData, nwData, finalBalance: balance, peakNw };
+    return { labels, inflowData, growthData, outflowData, nwData, finalBalance: balance, peakNw, peakFlow, minFlow };
 }
 
 // ── Simulation Entry Point ────────────────────────────────────
@@ -321,8 +346,10 @@ function updateSimulation() {
         const sim    = simulateLife(currentAge, stopAge, principal, rAge, stopAge, retAcc, retDec);
         if (sim.finalBalance >= floor) successes++;
         if (i === 0) {
-            firstPath          = sim;
-            computedPeakCache  = sim.peakNw;
+            firstPath             = sim;
+            computedPeakCache     = sim.peakNw;
+            computedMinFlowCache  = sim.minFlow;
+            computedPeakFlowCache = sim.peakFlow;
         }
     }
 
@@ -339,9 +366,11 @@ function updateSimulation() {
     document.getElementById('label-legacy-floor').innerText = 'Desired Legacy Floor: ' + formatCurrency(floor);
 
     // View clamping
-    const axisMin        = boxAxisMin.value !== "" ? parseInt(boxAxisMin.value)   : currentAge;
-    const axisMax        = boxAxisMax.value !== "" ? parseInt(boxAxisMax.value)   : stopAge + 1;
-    const yMaxConstraint = boxYMax.value    !== "" ? parseFloat(boxYMax.value)    : undefined;
+    const axisMin        = boxAxisMin.value  !== "" ? parseInt(boxAxisMin.value)    : currentAge;
+    const axisMax        = boxAxisMax.value  !== "" ? parseInt(boxAxisMax.value)    : stopAge + 1;
+    const yMaxConstraint = boxYMax.value     !== "" ? parseFloat(boxYMax.value)     : undefined;
+    const yLeftMinCon    = boxYLeftMin.value !== "" ? parseFloat(boxYLeftMin.value) : undefined;
+    const yLeftMaxCon    = boxYLeftMax.value !== "" ? parseFloat(boxYLeftMax.value) : undefined;
 
     chartInstance.data.labels                   = firstPath.labels;
     chartInstance.data.datasets[0].data         = firstPath.inflowData;
@@ -351,6 +380,8 @@ function updateSimulation() {
     chartInstance.options.scales.x.type         = 'linear';
     chartInstance.options.scales.x.min          = axisMin;
     chartInstance.options.scales.x.max          = axisMax;
+    chartInstance.options.scales.y.min          = yLeftMinCon;
+    chartInstance.options.scales.y.max          = yLeftMaxCon;
     chartInstance.options.scales.yNetWorth.max  = yMaxConstraint;
     chartInstance.update('none');
 
@@ -399,6 +430,10 @@ function updateButtonStates() {
     const yLocked = boxYMax.value !== "";
     btnLockY.textContent = yLocked ? "Unlock Auto" : "Lock Current";
     btnLockY.classList.toggle('locked', yLocked);
+
+    const yLeftLocked = boxYLeftMin.value !== "" || boxYLeftMax.value !== "";
+    btnLockYLeft.textContent = yLeftLocked ? "Unlock Auto" : "Lock Current";
+    btnLockYLeft.classList.toggle('locked', yLeftLocked);
 }
 
 // ── Axis Lock Buttons ─────────────────────────────────────────
@@ -422,18 +457,35 @@ btnLockY.addEventListener('click', () => {
     updateSimulation();
 });
 
+btnLockYLeft.addEventListener('click', () => {
+    if (boxYLeftMin.value !== "" || boxYLeftMax.value !== "") {
+        boxYLeftMin.value = "";
+        boxYLeftMax.value = "";
+    } else {
+        boxYLeftMin.value = computedMinFlowCache < 0 ? snapFloor(computedMinFlowCache) : "0";
+        boxYLeftMax.value = snapFlowCeiling(computedPeakFlowCache);
+    }
+    updateSimulation();
+});
+
 mainLockBtn.addEventListener('click', () => {
-    const allLocked = boxAxisMin.value !== "" && boxAxisMax.value !== "" && boxYMax.value !== "";
+    const allLocked = boxAxisMin.value  !== "" && boxAxisMax.value  !== ""
+                   && boxYMax.value     !== "" && boxYLeftMin.value !== ""
+                   && boxYLeftMax.value !== "";
     if (!allLocked) {
-        boxAxisMin.value = parseInt(boxStartAge.value) || 0;
-        boxAxisMax.value = (parseInt(boxEndAge.value) || 95) + 1;
+        boxAxisMin.value  = parseInt(boxStartAge.value) || 0;
+        boxAxisMax.value  = (parseInt(boxEndAge.value) || 95) + 1;
         if (computedPeakCache > 0) boxYMax.value = snapCeiling(computedPeakCache);
+        boxYLeftMin.value = computedMinFlowCache < 0 ? snapFloor(computedMinFlowCache) : "0";
+        boxYLeftMax.value = snapFlowCeiling(computedPeakFlowCache);
         mainLockBtn.textContent = "Unlock Auto-Scale";
         mainLockBtn.classList.add('locked');
     } else {
-        boxAxisMin.value = "";
-        boxAxisMax.value = "";
-        boxYMax.value    = "";
+        boxAxisMin.value  = "";
+        boxAxisMax.value  = "";
+        boxYMax.value     = "";
+        boxYLeftMin.value = "";
+        boxYLeftMax.value = "";
         mainLockBtn.textContent = "Lock Scale for Comparison";
         mainLockBtn.classList.remove('locked');
     }
@@ -616,9 +668,11 @@ function updateURLParams() {
     params.set('ss',          JSON.stringify(ssEvents.map(e => [e.amt, e.age])));
     params.set('wf',          JSON.stringify(windfallEvents.map(e => [e.amt, e.age])));
     params.set('m',           JSON.stringify(milestones.map(m => [m.age, m.income, m.savings, m.spending])));
-    if (boxAxisMin.value !== "") params.set('xMin', boxAxisMin.value);
-    if (boxAxisMax.value !== "") params.set('xMax', boxAxisMax.value);
-    if (boxYMax.value    !== "") params.set('yMax', boxYMax.value);
+    if (boxAxisMin.value  !== "") params.set('xMin',     boxAxisMin.value);
+    if (boxAxisMax.value  !== "") params.set('xMax',     boxAxisMax.value);
+    if (boxYMax.value     !== "") params.set('yMax',     boxYMax.value);
+    if (boxYLeftMin.value !== "") params.set('yLeftMin', boxYLeftMin.value);
+    if (boxYLeftMax.value !== "") params.set('yLeftMax', boxYLeftMax.value);
     window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
 }
 
@@ -628,9 +682,12 @@ function loadParamsFromURL() {
     if (p.has('endAge'))      boxEndAge.value      = sliderEndAge.value      = p.get('endAge');
     if (p.has('principal'))   boxPrincipal.value   = inputPrincipal.value    = p.get('principal');
     if (p.has('legacyFloor')) boxLegacyFloor.value = sliderLegacyFloor.value = p.get('legacyFloor');
-    if (p.has('xMin'))        boxAxisMin.value = p.get('xMin');
-    if (p.has('xMax'))        boxAxisMax.value = p.get('xMax');
-    if (p.has('yMax'))        boxYMax.value    = p.get('yMax');
+    if (p.has('xMin'))     boxAxisMin.value  = p.get('xMin');
+    if (p.has('xMax'))     boxAxisMax.value  = p.get('xMax');
+    if (p.has('yMax'))     boxYMax.value     = p.get('yMax');
+    if (p.has('yLeftMin')) boxYLeftMin.value = p.get('yLeftMin');
+    if (p.has('yLeftMax')) boxYLeftMax.value = p.get('yLeftMax');
+
     if (p.has('ss')) ssEvents       = JSON.parse(p.get('ss')).map(d => ({ id: newId(), amt: d[0], age: d[1] }));
     if (p.has('wf')) windfallEvents = JSON.parse(p.get('wf')).map(d => ({ id: newId(), amt: d[0], age: d[1] }));
 
@@ -644,7 +701,7 @@ function loadParamsFromURL() {
         toggleManualInputs();
     }
 
-    if (p.has('xMin') || p.has('xMax') || p.has('yMax')) {
+    if (p.has('xMin') || p.has('xMax') || p.has('yMax') || p.has('yLeftMin') || p.has('yLeftMax')) {
         mainLockBtn.textContent = "Unlock Auto-Scale";
         mainLockBtn.classList.add('locked');
     }
@@ -670,6 +727,8 @@ linkInputs(sliderLegacyFloor, boxLegacyFloor, (val) => {
 boxAxisMin.addEventListener('change', updateSimulation);
 boxAxisMax.addEventListener('change', updateSimulation);
 boxYMax.addEventListener('change',    updateSimulation);
+boxYLeftMin.addEventListener('change', updateSimulation);
+boxYLeftMax.addEventListener('change', updateSimulation);
 
 // ── Boot ──────────────────────────────────────────────────────
 loadParamsFromURL();
