@@ -462,7 +462,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 @media (min-width: 768px) {
-    .tools-nav { grid-template-columns: repeat(4, 1fr); }
+    .tools-nav { grid-template-columns: repeat(3, 1fr); }
 }
 
 .nav-item {
