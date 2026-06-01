@@ -53,6 +53,26 @@ principles. The compiled PDFs and their LaTeX sources live in [`docs/`](docs/).
 LaTeX sources, the plot-generation scripts (`generate_plot*.py`), and the generated
 figures are in [`docs/src_docs/`](docs/src_docs/).
 
+### Generating the figures
+
+The whitepaper figures are produced offline by the `generate_plot*.py` scripts using
+NumPy, SciPy, and Matplotlib. They are not part of the web app — you only need this if
+you want to regenerate or modify the plots.
+
+```bash
+# from the repo root
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# run a script (writes its PDF into the visual-assets folder)
+cd docs/src_docs
+python3 generate_plot0.py
+```
+
+The resulting PDFs land in `docs/src_docs/visual-assets/`, where the LaTeX sources
+pick them up on the next compile.
+
 ## Tech stack
 
 - **Vanilla JavaScript** — no framework, no build step.
