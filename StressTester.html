@@ -74,7 +74,7 @@
             </div>
 
             <!-- Age-based retirement (default visible) -->
-            <div id="retire-age-group" class="control-group" style="display:flex; flex-direction:column; gap:8px;">
+            <div id="retire-age-group" class="control-group">
                 <label class="control-label">Retirement Age</label>
                 <div class="interactive-row">
                     <input type="range"  id="slider-retire-age" min="0" max="100" value="65">
@@ -82,8 +82,8 @@
                 </div>
             </div>
 
-            <!-- NW-based retirement (hidden by default) -->
-            <div id="retire-nw-group" class="control-group" style="display:none;">
+            <!-- NW-based retirement (hidden by default, shown by applyRetireMode) -->
+            <div id="retire-nw-group" class="control-group">
                 <label class="control-label" id="label-retire-nw">Retire at Net Worth: $1,000,000</label>
                 <div class="interactive-row">
                     <input type="range"  id="input-retire-nw" min="0" max="5000000" step="50000" value="1000000">
@@ -104,6 +104,8 @@
                 <select id="select-growth-method-acc">
                     <option value="60-40" selected>60/40 Stocks/Bonds — real μ 5.9%, σ 12.5%</option>
                     <option value="equities">US Equities (S&amp;P 500) — real μ 8.8%, σ 19.6%</option>
+                    <option value="cohort-6040">60/40 Chronological (1928–2024)</option>
+                    <option value="cohort-equities">US Equities Chronological (1928–2024)</option>
                     <option value="manual">Manual — Mean &amp; Standard Deviation</option>
                 </select>
                 <div id="manual-inputs-acc" class="manual-inputs-grid">
@@ -134,6 +136,8 @@
                     <select id="select-growth-method-dec">
                         <option value="60-40" selected>60/40 Stocks/Bonds — real μ 5.9%, σ 12.5%</option>
                         <option value="equities">US Equities (S&amp;P 500) — real μ 8.8%, σ 19.6%</option>
+                        <option value="cohort-6040">60/40 Chronological (1928–2024)</option>
+                        <option value="cohort-equities">US Equities Chronological (1928–2024)</option>
                         <option value="manual">Manual — Mean &amp; Standard Deviation</option>
                     </select>
                     <div id="manual-inputs-dec" class="manual-inputs-grid">
@@ -223,12 +227,23 @@
     <div class="doc-footer">
         <div class="doc-notes">
             <p>
-                <strong>Methodology:</strong> Runs <strong>1,000 Monte Carlo iterations</strong>, sampling
-                historical annual returns at random with replacement (bootstrap resampling). The net worth chart
-                displays a <strong>percentile fan</strong>: p10/p25 as dashed lines (downside), p50 as the solid
-                median. The asset growth bars show the single simulation run whose terminal balance lands closest
-                to the <strong>10th percentile outcome</strong> — a coherent real return sequence that produced a
-                bad-but-realistic result, not a synthetic worst-case-every-year path.
+                <strong>Methodology:</strong> Two simulation modes are available.
+                <strong>Bootstrap resampling</strong> (60/40, Equities, Manual): runs 1,000 Monte Carlo
+                iterations sampling returns randomly with replacement.
+                <strong>Chronological cohort</strong>: walks every valid overlapping window through the
+                actual 1928–2024 return sequence — e.g. a 40-year horizon yields 58 cohorts (1928–1967,
+                1929–1968, … 1985–2024). If both phases use a chronological method (or are linked), the
+                full planning horizon must fit within 97 years; if only one phase is chronological, only
+                that phase's length is constrained. Horizons exceeding 97 years show a warning.
+                <strong>Note:</strong> Cohort success rates are not directly comparable to bootstrap success rates.
+                Over long horizons, all cohort windows have similar CAGRs (e.g. 4.6–5.9% for 60/40 over 67 years)
+                because sequence variance averages out. Bootstrap can draw pathological sequences that never
+                occurred in real history, producing wider variance and lower success rates. Both are valid
+                but measure different things: cohort = "did any real historical investor fail?";
+                bootstrap = "stress-testing against synthetic extremes."
+                The net worth chart displays a <strong>percentile fan</strong>: p10/p25 as dashed lines,
+                p50 as the solid median, plus the single actual run closest to the p10 terminal outcome
+                (orange) whose growth sequence also drives the cash flow bars.
                 Success rate = share of runs ending above the legacy floor.
             </p>
             <p>

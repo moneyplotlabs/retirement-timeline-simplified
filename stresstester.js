@@ -111,6 +111,10 @@ let ratesLinked           = false;
 let computedPeakCache     = 0;
 let retireMode            = 'age';   // 'age' | 'nw'
 
+// Cached percentile retire ages for metric card rendering (NW mode only)
+let cachedRetireAges      = null;    // { p10, p25, p50, p75, p90, currentAge } | null
+let cachedCurrentAge      = 0;
+
 let milestones     = [];
 let ssEvents       = [];
 let windfallEvents = [];
@@ -129,10 +133,14 @@ function snapCeiling(rawPeak) {
 }
 
 // ── Return Series Generation ──────────────────────────────────
-function getReturnSeries(method, mean, std, count) {
+const HIST_START_YEAR = 1928;
+const HIST_YEARS      = histEquities.length;   // 97
+
+// Returns a single return series of `count` values for the given method.
+// For cohort method, `cohortOffset` = index into historical array for year 0.
+function getReturnSeries(method, mean, std, count, cohortOffset = 0) {
     if (method === 'manual') {
         return Array.from({ length: count }, () => {
-            // Box-Muller transform for normally-distributed returns
             const u1 = Math.random();
             const u2 = Math.random();
             const z  = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
@@ -140,19 +148,76 @@ function getReturnSeries(method, mean, std, count) {
         });
     }
     const pool = method === 'equities' ? histEquities : hist6040;
+    if (method === 'cohort-equities' || method === 'cohort-6040') {
+        // Chronological slice starting at cohortOffset
+        return Array.from({ length: count }, (_, i) => pool[cohortOffset + i] / 100);
+    }
+    // Bootstrap resampling
     return Array.from({ length: count }, () => pool[Math.floor(Math.random() * pool.length)] / 100);
+}
+
+// Returns all valid cohort start offsets given the number of years needed from history.
+function getCohortOffsets(yearsNeeded) {
+    const count = HIST_YEARS - yearsNeeded + 1;
+    if (count <= 0) return [];
+    return Array.from({ length: count }, (_, i) => i);
+}
+
+// Determine whether a method is cohort-based
+const isCohort = (m) => m === 'cohort-equities' || m === 'cohort-6040';
+
+// Build the full list of simulation runs for cohort mode.
+// Returns array of { retAcc, retDec } pairs covering all valid cohorts.
+// Rules:
+//   - If both methods are cohort (or linked): full horizon must fit → cohortYears = horizon
+//   - If only acc is cohort: accHorizon years from history, dec gets random series
+//   - If only dec is cohort: decHorizon years from history, acc gets random series
+function buildCohortRuns(methodAcc, methodDec, meanAcc, stdAcc, meanDec, stdDec,
+                         accHorizon, decHorizon, horizon) {
+    const bothCohort = isCohort(methodAcc) && isCohort(methodDec);
+    const accOnly    = isCohort(methodAcc) && !isCohort(methodDec);
+    const decOnly    = !isCohort(methodAcc) && isCohort(methodDec);
+
+    const poolAcc = methodAcc === 'cohort-equities' ? histEquities : hist6040;
+    const poolDec = methodDec === 'cohort-equities' ? histEquities : hist6040;
+
+    if (bothCohort) {
+        // One contiguous slice per cohort covering the full horizon
+        return getCohortOffsets(horizon).map(offset => ({
+            retAcc: Array.from({ length: horizon }, (_, i) => poolAcc[offset + i] / 100),
+            retDec: Array.from({ length: horizon }, (_, i) => poolDec[offset + i] / 100),
+        }));
+    }
+    if (accOnly) {
+        return getCohortOffsets(accHorizon).map(offset => ({
+            retAcc: Array.from({ length: horizon }, (_, i) =>
+                i < accHorizon ? poolAcc[offset + i] / 100
+                               : getReturnSeries(methodDec, meanDec, stdDec, 1)[0]),
+            retDec: getReturnSeries(methodDec, meanDec, stdDec, horizon),
+        }));
+    }
+    if (decOnly) {
+        return getCohortOffsets(decHorizon).map(offset => ({
+            retAcc: getReturnSeries(methodAcc, meanAcc, stdAcc, horizon),
+            retDec: Array.from({ length: horizon }, (_, i) =>
+                i >= accHorizon ? poolDec[offset + (i - accHorizon)] / 100
+                                : getReturnSeries(methodAcc, meanAcc, stdAcc, 1)[0]),
+        }));
+    }
+    return [];   // neither cohort — handled by regular Monte Carlo path
 }
 
 // ── Chart Init ────────────────────────────────────────────────
 // Dataset index map:
-//   0  Inflow (Income)         — bar, stack:flow
-//   1  Outflow (Spending)      — bar, stack:flow
-//   2  Asset Growth (median)   — bar, stack:flow
-//   3  NW p10  (10th pct)      — dashed line, red,    visible by default
-//   4  NW p25  (25th pct)      — dashed line, amber,  visible by default
-//   5  NW p50  (median)        — solid line,  blue,   always visible
-//   6  NW p75  (75th pct)      — dashed line, light,  HIDDEN by default
-//   7  NW p90  (90th pct)      — dashed line, lighter, HIDDEN by default, fills to p75
+//   0  Inflow (Income)              — bar, stack:flow
+//   1  Outflow (Spending)           — bar, stack:flow
+//   2  Asset Growth (p10 scenario)  — bar, stack:flow
+//   3  NW p10  (cross-sectional)    — dashed line, blue-400,  visible
+//   4  NW p25  (cross-sectional)    — dashed line, blue-300,  visible
+//   5  NW p50  (cross-sectional)    — solid  line, blue-500,  visible
+//   6  NW p75  (cross-sectional)    — dashed line, blue-300,  HIDDEN by default
+//   7  NW p90  (cross-sectional)    — dashed line, blue-200,  HIDDEN by default, fill target
+//   8  NW p10 scenario (actual run) — solid  line, orange,    visible
 
 let upperBandVisible = false;
 
@@ -249,6 +314,17 @@ function initChart() {
                     hidden:      true,
                     fill:        false,
                 },
+                // p10 scenario — the single actual run closest to p10 terminal NW
+                // Matches the growth bars; solid orange so it stands apart from the blue fan
+                {
+                    ...lineBase,
+                    label:       'NW p10 scenario (actual run)',
+                    data:        [],
+                    borderColor: 'rgba(251, 146, 60, 0.9)',
+                    borderWidth: 2,
+                    hidden:      false,
+                    fill:        false,
+                },
             ],
         },
         options: {
@@ -300,19 +376,63 @@ function initChart() {
     loader.style.display = 'none';
 }
 
+// ── Metric Card Renderer (NW mode) ───────────────────────────
+// Reads cachedRetireAges and upperBandVisible to render 3 or 5 percentile rows.
+function renderMetricRows() {
+    if (!cachedRetireAges) return;
+
+    mWorkYears.style.fontSize = '0';
+    mRetireAge.style.fontSize = '0';
+    document.getElementById('metric-work-years-label').innerText = 'Working Years to Retire';
+    document.getElementById('metric-retire-age-label').innerText = 'Retirement Age';
+
+    const { p10, p25, p50, p75, p90 } = cachedRetireAges;
+    const ca = cachedCurrentAge;
+
+    const pctRow = (label, value) =>
+        `<div class="metric-pct-row">
+            <span class="metric-pct-label">${label}</span>
+            <span class="metric-pct-value">${value}</span>
+         </div>`;
+
+    const rows = [
+        pctRow('p10 scenario', (p10 - ca).toFixed(1) + ' yrs'),
+        pctRow('p25 scenario', (p25 - ca).toFixed(1) + ' yrs'),
+        pctRow('p50 (median)', (p50 - ca).toFixed(1) + ' yrs'),
+        ...(upperBandVisible ? [
+            pctRow('p75 scenario', (p75 - ca).toFixed(1) + ' yrs'),
+            pctRow('p90 scenario', (p90 - ca).toFixed(1) + ' yrs'),
+        ] : []),
+    ];
+
+    const ageRows = [
+        pctRow('p10 scenario', 'Age ' + p10.toFixed(1)),
+        pctRow('p25 scenario', 'Age ' + p25.toFixed(1)),
+        pctRow('p50 (median)', 'Age ' + p50.toFixed(1)),
+        ...(upperBandVisible ? [
+            pctRow('p75 scenario', 'Age ' + p75.toFixed(1)),
+            pctRow('p90 scenario', 'Age ' + p90.toFixed(1)),
+        ] : []),
+    ];
+
+    mWorkYears.innerHTML = `<div class="metric-pct-stack">${rows.join('')}</div>`;
+    mRetireAge.innerHTML = `<div class="metric-pct-stack">${ageRows.join('')}</div>`;
+}
+
 // ── Upper Band Toggle ─────────────────────────────────────────
 function applyUpperBandVisibility() {
     if (!chartInstance) return;
     const ds = chartInstance.data.datasets;
     ds[6].hidden = !upperBandVisible;
     ds[7].hidden = !upperBandVisible;
-    // Only apply fill when visible; Chart.js skips fill for hidden datasets unreliably
     ds[6].fill = upperBandVisible ? '+1' : false;
     chartInstance.update('none');
 
     const btn = document.getElementById('btn-toggle-upper-band');
     btn.textContent = upperBandVisible ? 'Hide 75th / 90th' : 'Show 75th / 90th';
     btn.classList.toggle('locked', upperBandVisible);
+
+    renderMetricRows();
 }
 
 document.getElementById('btn-toggle-upper-band').addEventListener('click', () => {
@@ -343,12 +463,6 @@ function simulateNWPath(startAge, endAge, principal, rAge, nwTarget, mode, retur
         const t = startAge + i;
         nwByAge.push(balance);
 
-        // NW mode: check if we've just crossed the target this year (before spending)
-        if (mode === 'nw' && !crossingFound && balance >= nwTarget) {
-            resolvedRAge  = t;
-            crossingFound = true;
-        }
-
         const startBal = balance;
         const m        = getMilestone(t);
         const passive  = ssEvents.reduce((acc, ss) => acc + (t >= ss.age ? ss.amt : 0), 0);
@@ -357,22 +471,38 @@ function simulateNWPath(startAge, endAge, principal, rAge, nwTarget, mode, retur
         const rAcc = returnsAcc[i];
         const rDec = returnsDec[i];
 
+        // Compute end-of-year accumulation balance (used for crossing interpolation)
+        const balanceAfterAcc = startBal * (1 + rAcc) + m.savings + passive + windfall;
+
+        // NW mode: if not yet crossed, check if this year's accumulation crosses the target
+        if (mode === 'nw' && !crossingFound) {
+            if (balanceAfterAcc >= nwTarget) {
+                // Interpolate fractional crossing point within this year
+                const fraction = startBal >= nwTarget ? 0
+                    : (balanceAfterAcc - startBal) > 0
+                        ? (nwTarget - startBal) / (balanceAfterAcc - startBal)
+                        : 0;
+                resolvedRAge  = t + Math.max(0, Math.min(1, fraction));
+                crossingFound = true;
+            }
+        }
+
         const k     = Math.floor(resolvedRAge);
         const delta = resolvedRAge - k;
 
         if (t < k) {
-            balance = balance * (1 + rAcc) + m.savings + passive + windfall;
+            balance = balanceAfterAcc;
             growthByAge.push(balance - startBal - m.savings - passive - windfall);
         } else if (t === k) {
             const workFrac   = delta;
             const retireFrac = 1 - delta;
-            const balanceMid = balance * Math.pow(1 + rAcc, workFrac)
+            const balanceMid = startBal * Math.pow(1 + rAcc, workFrac)
                 + (m.savings + passive + windfall) * workFrac;
             balance = (balanceMid - m.spending * retireFrac + (passive + windfall) * retireFrac)
                 * Math.pow(1 + rDec, retireFrac);
             growthByAge.push(balance - startBal - (m.savings * workFrac) + (m.spending * retireFrac) - passive - windfall);
         } else {
-            balance = (balance - m.spending + passive + windfall) * (1 + rDec);
+            balance = (startBal - m.spending + passive + windfall) * (1 + rDec);
             growthByAge.push(balance - startBal + m.spending - passive - windfall);
         }
     }
@@ -455,22 +585,60 @@ function updateSimulation() {
     const rAge    = parseFloat(boxRetireAge.value);
     const nwTarget = parseFloat(boxRetireNW.value) || 0;
 
-    // ── Monte Carlo: 1000 iterations ──────────────────────────
+    // Phases: acc = working years, dec = retirement years
+    const accHorizon = Math.round(Math.max(0, (retireMode === 'age' ? rAge : stopAge) - currentAge));
+    const decHorizon = Math.max(0, horizon - accHorizon);
+
+    const anyCohort = isCohort(methodAcc) || isCohort(methodDec);
+
+    // ── Over-data warning ─────────────────────────────────────
+    const cohortHorizonNeeded = (isCohort(methodAcc) && isCohort(methodDec))
+        ? horizon
+        : isCohort(methodAcc) ? accHorizon : isCohort(methodDec) ? decHorizon : 0;
+
+    if (cohortHorizonNeeded > HIST_YEARS) {
+        mWorkYears.innerText = '—';
+        mRetireAge.innerText = '—';
+        mSuccessRate.innerText = '—';
+        document.getElementById('metric-work-years-label').innerText = 'Working Years';
+        document.getElementById('metric-retire-age-label').innerText = 'Retirement Age';
+        if (chartInstance) {
+            chartInstance.data.datasets.forEach(ds => ds.data = []);
+            chartInstance.update('none');
+        }
+        // Show warning in loader overlay without destroying the chart canvas
+        loader.style.display = 'flex';
+        loader.innerHTML = `<span class="placeholder-text">⚠️ Horizon (${horizon - 1} years) exceeds 97 years of historical data.<br>Shorten the planning period or use a different growth method.</span>`;
+        return;
+    }
+    // Hide loader if it was showing a warning
+    loader.style.display = 'none';
+
+    // ── Build simulation runs ─────────────────────────────────
     const ITERATIONS = 1000;
 
-    const nAgesBar    = stopAge - currentAge + 1;
-    const allNW       = Array.from({ length: nAges }, () => []);
-    const allRunData  = [];
-    const allRAges    = [];   // resolved retirement age per run (NW mode only)
-    let successes     = 0;
+    let simRuns;
+    if (anyCohort) {
+        simRuns = buildCohortRuns(methodAcc, methodDec, meanAcc, stdAcc, meanDec, stdDec,
+                                  accHorizon, decHorizon, horizon);
+    } else {
+        simRuns = Array.from({ length: ITERATIONS }, () => ({
+            retAcc: getReturnSeries(methodAcc, meanAcc, stdAcc, horizon),
+            retDec: getReturnSeries(methodDec, meanDec, stdDec, horizon),
+        }));
+    }
 
-    for (let i = 0; i < ITERATIONS; i++) {
-        const retAcc = getReturnSeries(methodAcc, meanAcc, stdAcc, horizon);
-        const retDec = getReturnSeries(methodDec, meanDec, stdDec, horizon);
-        const sim    = simulateNWPath(currentAge, stopAge, principal, rAge, nwTarget, retireMode, retAcc, retDec);
+    const nAgesBar   = stopAge - currentAge + 1;
+    const allNW      = Array.from({ length: nAges }, () => []);
+    const allRunData = [];
+    const allRAges   = [];
+    let successes    = 0;
+
+    for (const { retAcc, retDec } of simRuns) {
+        const sim = simulateNWPath(currentAge, stopAge, principal, rAge, nwTarget, retireMode, retAcc, retDec);
         if (sim.finalBalance >= floor) successes++;
         sim.nwByAge.forEach((bal, idx) => allNW[idx].push(bal));
-        allRunData.push({ finalBalance: sim.finalBalance, growthByAge: sim.growthByAge });
+        allRunData.push({ finalBalance: sim.finalBalance, growthByAge: sim.growthByAge, nwByAge: sim.nwByAge });
         if (retireMode === 'nw') allRAges.push(sim.resolvedRAge);
     }
 
@@ -500,32 +668,47 @@ function updateSimulation() {
             ? run : best
     );
     const barAges       = Array.from({ length: nAgesBar }, (_, i) => currentAge + i);
-    const growthP10Data = barAges.map((age, idx) => ({ x: age, y: p10Run.growthByAge[idx] ?? 0 }));
+    const growthP10Data     = barAges.map((age, idx) => ({ x: age, y: p10Run.growthByAge[idx] ?? 0 }));
+
+    // p10 scenario NW path — same run as the growth bars, so bars and line tell the same story
+    // nwByAge has nAges entries (startAge..stopAge+1); map to {x,y} clamped to ≥0
+    const nwP10ScenarioData = p10Run.nwByAge.map((bal, idx) => ({
+        x: currentAge + idx,
+        y: Math.max(0, bal),
+    }));
 
     // Inflow / outflow bars — use p90 retire age in NW mode so bars match the worst-case scenario
     const barsRAge = (retireMode === 'age') ? rAge : percentile([...allRAges].sort((a,b)=>a-b), 90);
     const bars     = simulateDeterministicBars(currentAge, stopAge, principal, barsRAge);
 
     // ── Metrics ───────────────────────────────────────────────
-    const successRate = (successes / ITERATIONS) * 100;
-    mSuccessRate.innerText               = successRate.toFixed(1) + '%';
+    const successRate = (successes / simRuns.length) * 100;
+    const runLabel    = anyCohort ? `${simRuns.length} cohorts` : '1,000 runs';
+    mSuccessRate.innerText = successRate.toFixed(1) + '%';
+    mSuccessRate.parentElement.querySelector('.metric-label').innerText = `Success Rate (${runLabel})`;
     mSuccessRate.parentElement.className = 'metric-card '
         + (successRate > 80 ? 'green' : successRate > 50 ? 'blue' : '');
 
     if (retireMode === 'age') {
         const w = Math.max(0, rAge - currentAge);
-        mWorkYears.innerText = w.toFixed(1) + ' Years';
-        mRetireAge.innerText = 'Age ' + rAge.toFixed(1);
+        mWorkYears.style.fontSize = '';
+        mRetireAge.style.fontSize = '';
+        mWorkYears.innerHTML = Math.round(w) + ' Years';
+        mRetireAge.innerHTML = 'Age ' + Math.round(rAge);
         document.getElementById('metric-work-years-label').innerText = 'Working Years';
         document.getElementById('metric-retire-age-label').innerText = 'Retirement Age';
+        cachedRetireAges = null;
     } else {
-        const sortedRAges   = [...allRAges].sort((a, b) => a - b);
-        const p90RetireAge  = percentile(sortedRAges, 90);
-        const p50RetireAge  = percentile(sortedRAges, 50);
-        mWorkYears.innerText = (p90RetireAge - currentAge).toFixed(1) + ' Yrs (p10)';
-        mRetireAge.innerText = 'Age ' + p50RetireAge.toFixed(1) + ' (p50)';
-        document.getElementById('metric-work-years-label').innerText = 'Working Yrs (10th percentile)';
-        document.getElementById('metric-retire-age-label').innerText = 'Retire Age (50th percentile)';
+        const sortedRAges  = [...allRAges].sort((a, b) => a - b);
+        cachedRetireAges   = {
+            p10: percentile(sortedRAges, 90),   // p90 of working-years dist = p10 NW outcome
+            p25: percentile(sortedRAges, 75),
+            p50: percentile(sortedRAges, 50),
+            p75: percentile(sortedRAges, 25),
+            p90: percentile(sortedRAges, 10),
+        };
+        cachedCurrentAge = currentAge;
+        renderMetricRows();
     }
 
     document.getElementById('label-principal').innerText    = 'Starting Balance: '     + formatCurrency(principal);
@@ -539,7 +722,7 @@ function updateSimulation() {
     const yLeftMaxCon    = boxYLeftMax.value !== "" ? parseFloat(boxYLeftMax.value) : undefined;
 
     // ── Push to chart ─────────────────────────────────────────
-    // Dataset indices: 0=inflow, 1=outflow, 2=growth(p10), 3=NWp10, 4=NWp25, 5=NWp50, 6=NWp75, 7=NWp90
+    // Dataset indices: 0=inflow, 1=outflow, 2=growth(p10 scenario), 3=NWp10, 4=NWp25, 5=NWp50, 6=NWp75, 7=NWp90, 8=NWp10scenario
     chartInstance.data.labels                  = bars.labels;
     chartInstance.data.datasets[0].data        = bars.inflowData;
     chartInstance.data.datasets[1].data        = bars.outflowData;
@@ -549,6 +732,7 @@ function updateSimulation() {
     chartInstance.data.datasets[5].data        = nwP50;
     chartInstance.data.datasets[6].data        = nwP75;
     chartInstance.data.datasets[7].data        = nwP90;
+    chartInstance.data.datasets[8].data        = nwP10ScenarioData;
     chartInstance.options.scales.x.type        = 'linear';
     chartInstance.options.scales.x.min         = axisMin;
     chartInstance.options.scales.x.max         = axisMax;
@@ -565,8 +749,8 @@ function updateSimulation() {
 // ── Retire Mode Toggle ────────────────────────────────────────
 function applyRetireMode() {
     const isNW = retireMode === 'nw';
-    retireAgeGroup.style.display = isNW ? 'none'  : 'flex';
-    retireNWGroup.style.display  = isNW ? 'block' : 'none';
+    retireAgeGroup.style.display = isNW ? 'none'  : '';     // '' → controlled by .control-group CSS
+    retireNWGroup.style.display  = isNW ? ''      : 'none'; // '' → controlled by .control-group CSS
     retireModeAge.classList.toggle('locked', !isNW);
     retireModeNW.classList.toggle('locked',   isNW);
 }
@@ -596,16 +780,22 @@ inputRetireNW.addEventListener('input', () => {
     updateSimulation();
 });
 function toggleManualInputs() {
-    manualInputsAcc.style.display = selectGrowthMethodAcc.value === 'manual' ? 'grid' : 'none';
+    const showAcc = selectGrowthMethodAcc.value === 'manual';
+    const showDec = selectGrowthMethodDec.value === 'manual';
+    manualInputsAcc.style.display = showAcc ? 'grid' : 'none';
     if (ratesLinked) {
-        manualInputsDec.style.display = manualInputsAcc.style.display;
+        manualInputsDec.style.display = showAcc ? 'grid' : 'none';
     } else {
-        manualInputsDec.style.display = selectGrowthMethodDec.value === 'manual' ? 'grid' : 'none';
+        manualInputsDec.style.display = showDec ? 'grid' : 'none';
     }
 }
 
 selectGrowthMethodAcc.addEventListener('change', () => {
-    if (ratesLinked) selectGrowthMethodDec.value = selectGrowthMethodAcc.value;
+    if (ratesLinked) {
+        selectGrowthMethodDec.value = selectGrowthMethodAcc.value === 'cohort-equities' ? 'cohort-equities'
+                                    : selectGrowthMethodAcc.value === 'cohort-6040'     ? 'cohort-6040'
+                                    : selectGrowthMethodAcc.value;
+    }
     toggleManualInputs();
     updateSimulation();
 });
