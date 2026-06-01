@@ -4,7 +4,7 @@
 > accumulation → decumulation lifecycle, from a deterministic closed-form baseline
 > all the way to Monte Carlo stress testing against 97 years of historical returns.
 
-**Live site:** _<add your deployed URL here — the domain in `CNAME`>_
+**Live site:** _https://moneyplotlabs.com_
 
 A zero-backend, client-side web app. Every calculation runs in the browser; nothing
 is sent to a server. The math behind each tool is derived from scratch in the
