@@ -4,3 +4,16 @@
 !.dev.vars.example
 .env*
 !.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pycs
+
+# Node (if you add tooling later for steps 2–3)
+node_modules/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
