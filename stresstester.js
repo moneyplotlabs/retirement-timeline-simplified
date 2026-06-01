@@ -219,7 +219,17 @@ function buildCohortRuns(methodAcc, methodDec, meanAcc, stdAcc, meanDec, stdDec,
 //   7  NW p90  (cross-sectional)    — dashed line, blue-200,  HIDDEN by default, fill target
 //   8  NW p10 scenario (actual run) — solid  line, orange,    visible
 
-let upperBandVisible = false;
+// Dataset index → percentile label mapping (for metric card sync)
+// Indices 3–7 are the NW percentile lines; others are bars/scenario with no metric row.
+const DS_PCT_LABELS = {
+    3: { pct: 'p10', workLabel: 'p10 scenario', ageLabel: 'p10 scenario' },
+    4: { pct: 'p25', workLabel: 'p25 scenario', ageLabel: 'p25 scenario' },
+    5: { pct: 'p50', workLabel: 'p50 (median)', ageLabel: 'p50 (median)' },
+    6: { pct: 'p75', workLabel: 'p75 scenario', ageLabel: 'p75 scenario' },
+    7: { pct: 'p90', workLabel: 'p90 scenario', ageLabel: 'p90 scenario' },
+};
+
+let upperBandVisible = false;   // kept for initial hidden state of p75/p90 on chart creation
 
 function initChart() {
     const ctx = document.getElementById('lifepathChart').getContext('2d');
@@ -357,6 +367,23 @@ function initChart() {
             plugins: {
                 legend: {
                     labels: { color: '#f8fafc' },
+                    onClick: (e, legendItem, legend) => {
+                        const idx = legendItem.datasetIndex;
+                        const ds  = legend.chart.data.datasets[idx];
+
+                        // Toggle hidden state
+                        ds.hidden = !ds.hidden;
+
+                        // p75 (idx 6) owns the fill to p90 (idx 7) — sync fill with visibility
+                        if (idx === 6) ds.fill = ds.hidden ? false : '+1';
+                        // If p90 (idx 7) is hidden while p75 visible, disable fill too
+                        if (idx === 7 && !legend.chart.data.datasets[6].hidden) {
+                            legend.chart.data.datasets[6].fill = ds.hidden ? false : '+1';
+                        }
+
+                        legend.chart.update('none');
+                        renderMetricRows();
+                    },
                 },
                 tooltip: {
                     mode:      'index',
@@ -377,7 +404,8 @@ function initChart() {
 }
 
 // ── Metric Card Renderer (NW mode) ───────────────────────────
-// Reads cachedRetireAges and upperBandVisible to render 3 or 5 percentile rows.
+// Reads cachedRetireAges and actual chart dataset hidden state
+// to render only the rows whose percentile line is currently visible.
 function renderMetricRows() {
     if (!cachedRetireAges) return;
 
@@ -387,7 +415,8 @@ function renderMetricRows() {
     document.getElementById('metric-retire-age-label').innerText = 'Retirement Age';
 
     const { p10, p25, p50, p75, p90 } = cachedRetireAges;
-    const ca = cachedCurrentAge;
+    const ca     = cachedCurrentAge;
+    const values = { p10, p25, p50, p75, p90 };
 
     const pctRow = (label, value) =>
         `<div class="metric-pct-row">
@@ -395,50 +424,23 @@ function renderMetricRows() {
             <span class="metric-pct-value">${value}</span>
          </div>`;
 
-    const rows = [
-        pctRow('p10 scenario', (p10 - ca).toFixed(1) + ' yrs'),
-        pctRow('p25 scenario', (p25 - ca).toFixed(1) + ' yrs'),
-        pctRow('p50 (median)', (p50 - ca).toFixed(1) + ' yrs'),
-        ...(upperBandVisible ? [
-            pctRow('p75 scenario', (p75 - ca).toFixed(1) + ' yrs'),
-            pctRow('p90 scenario', (p90 - ca).toFixed(1) + ' yrs'),
-        ] : []),
-    ];
+    // Build rows only for visible NW percentile datasets (indices 3–7)
+    const workRows = [];
+    const ageRows  = [];
+    Object.entries(DS_PCT_LABELS).forEach(([idxStr, meta]) => {
+        const idx = parseInt(idxStr);
+        const isVisible = chartInstance
+            ? !chartInstance.data.datasets[idx].hidden
+            : (idx <= 5);   // default: p10/p25/p50 visible
+        if (!isVisible) return;
+        const val = values[meta.pct];
+        workRows.push(pctRow(meta.workLabel, (val - ca).toFixed(1) + ' yrs'));
+        ageRows.push(pctRow(meta.ageLabel,  'Age ' + val.toFixed(1)));
+    });
 
-    const ageRows = [
-        pctRow('p10 scenario', 'Age ' + p10.toFixed(1)),
-        pctRow('p25 scenario', 'Age ' + p25.toFixed(1)),
-        pctRow('p50 (median)', 'Age ' + p50.toFixed(1)),
-        ...(upperBandVisible ? [
-            pctRow('p75 scenario', 'Age ' + p75.toFixed(1)),
-            pctRow('p90 scenario', 'Age ' + p90.toFixed(1)),
-        ] : []),
-    ];
-
-    mWorkYears.innerHTML = `<div class="metric-pct-stack">${rows.join('')}</div>`;
+    mWorkYears.innerHTML = `<div class="metric-pct-stack">${workRows.join('')}</div>`;
     mRetireAge.innerHTML = `<div class="metric-pct-stack">${ageRows.join('')}</div>`;
 }
-
-// ── Upper Band Toggle ─────────────────────────────────────────
-function applyUpperBandVisibility() {
-    if (!chartInstance) return;
-    const ds = chartInstance.data.datasets;
-    ds[6].hidden = !upperBandVisible;
-    ds[7].hidden = !upperBandVisible;
-    ds[6].fill = upperBandVisible ? '+1' : false;
-    chartInstance.update('none');
-
-    const btn = document.getElementById('btn-toggle-upper-band');
-    btn.textContent = upperBandVisible ? 'Hide 75th / 90th' : 'Show 75th / 90th';
-    btn.classList.toggle('locked', upperBandVisible);
-
-    renderMetricRows();
-}
-
-document.getElementById('btn-toggle-upper-band').addEventListener('click', () => {
-    upperBandVisible = !upperBandVisible;
-    applyUpperBandVisibility();
-});
 
 // ── Simulation ────────────────────────────────────────────────
 function getMilestone(age) {
@@ -740,7 +742,6 @@ function updateSimulation() {
     chartInstance.options.scales.y.max         = yLeftMaxCon;
     chartInstance.options.scales.yNetWorth.max = yMaxConstraint;
     chartInstance.update('none');
-    applyUpperBandVisibility();
 
     updateButtonStates();
     updateURLParams();
