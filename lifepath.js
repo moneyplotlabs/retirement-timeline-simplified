@@ -59,30 +59,8 @@ let milestones    = [];
 let ssEvents      = [];
 let windfallEvents = [];
 
-// ── Helpers ───────────────────────────────────────────────────
-const formatCurrency = (num) => '$' + Math.round(num).toLocaleString();
-
-function newId() {
-    return Math.random().toString(36).substring(2, 11);
-}
-
-function snapCeiling(rawPeak) {
-    if (rawPeak >= 1000000) return Math.ceil(rawPeak / 250000) * 250000;
-    if (rawPeak >= 250000)  return Math.ceil(rawPeak / 50000)  * 50000;
-    return Math.ceil(rawPeak / 10000) * 10000;
-}
-
-function snapFloor(rawMin) {
-    if (rawMin <= -100000) return Math.floor(rawMin / 25000) * 25000;
-    return Math.floor(rawMin / 5000) * 5000;
-}
-
-function snapFlowCeiling(rawPeak) {
-    if (rawPeak >= 500000) return Math.ceil(rawPeak / 100000) * 100000;
-    if (rawPeak >= 100000) return Math.ceil(rawPeak / 25000)  * 25000;
-    if (rawPeak >= 50000)  return Math.ceil(rawPeak / 10000)  * 10000;
-    return Math.ceil(rawPeak / 5000) * 5000;
-}
+// ── Helpers ──────────────────────────────────────────
+// formatCurrency, newId, snapCeiling, snapFloor, snapFlowCeiling → common.js
 
 // ── Chart Init ────────────────────────────────────────────────
 function initChart() {
@@ -174,91 +152,14 @@ function initChart() {
 }
 
 // ── Simulation ────────────────────────────────────────────────
-function getMilestone(age) {
-    return milestones.filter(m => m.age <= age).pop() || milestones[0];
-}
-
+// Pure year-by-year math lives in engine.js (Engine.simulateLife). This thin
+// wrapper injects milestones + event state so existing call sites are unchanged.
 function simulateLife(startAge, endAge, principal, rAcc, rDec, rAge, planningEndAge) {
-    const labels      = [];
-    const inflowData  = [];
-    const growthData  = [];
-    const outflowData = [];
-    const nwData      = [];
-
-    let balance = principal;
-    let peakNw  = principal;
-    let peakFlow = 0;
-    let minFlow  = 0;
-
-    const k     = Math.floor(rAge);
-    const delta = rAge - k;
-
-    for (let t = startAge; t <= endAge; t++) {
-        labels.push(t);
-
-        nwData.push(t <= planningEndAge + 1 ? { x: t, y: balance } : { x: t, y: null });
-
-        if (t > planningEndAge) {
-            inflowData.push({ x: t, y: null });
-            outflowData.push({ x: t, y: null });
-            growthData.push({ x: t, y: null });
-            continue;
-        }
-
-        const startBal = balance;
-        const m        = getMilestone(t);
-        const passive  = ssEvents.reduce((acc, ss) => acc + (t >= ss.age ? ss.amt : 0), 0);
-        const windfall = windfallEvents.reduce((acc, wf) => t === wf.age ? acc + wf.amt : acc, 0);
-
-        let growth = 0;
-
-        if (t < k) {
-            // Full working year
-            inflowData.push({ x: t, y: m.income + passive + windfall });
-            outflowData.push({ x: t, y: -m.spending });
-            balance  = balance * (1 + rAcc) + m.savings + passive + windfall;
-            growth   = balance - startBal - m.savings - passive - windfall;
-            peakNw   = Math.max(peakNw, balance);
-
-        } else if (t === k) {
-            // Transition year (fractional retirement)
-            const workFrac   = delta;
-            const retireFrac = 1 - delta;
-
-            inflowData.push({ x: t, y: (m.income * workFrac) + passive + windfall });
-            outflowData.push({ x: t, y: -m.spending });
-
-            const balanceMid = balance * Math.pow(1 + rAcc, workFrac)
-                + (m.savings * workFrac) + (passive * workFrac) + (windfall * workFrac);
-
-            if (delta > 0 && t <= planningEndAge) {
-                nwData.push({ x: t + delta, y: balanceMid });
-            }
-
-            balance = (balanceMid - m.spending * retireFrac + (passive * retireFrac) + (windfall * retireFrac))
-                * Math.pow(1 + rDec, retireFrac);
-            growth  = balance - startBal - (m.savings * workFrac) + (m.spending * retireFrac) - passive - windfall;
-            peakNw  = Math.max(peakNw, balanceMid, balance);
-
-        } else {
-            // Full retirement year
-            inflowData.push({ x: t, y: passive + windfall });
-            outflowData.push({ x: t, y: -m.spending });
-            balance  = (balance - m.spending + passive + windfall) * (1 + rDec);
-            growth   = balance - startBal + m.spending - passive - windfall;
-            peakNw   = Math.max(peakNw, balance);
-        }
-
-        growthData.push({ x: t, y: growth });
-
-        const posFlow = Math.max(0, inflowData[inflowData.length - 1].y || 0)
-                      + Math.max(0, growthData[growthData.length - 1].y || 0);
-        const negFlow = outflowData[outflowData.length - 1].y || 0;
-        peakFlow = Math.max(peakFlow, posFlow);
-        minFlow  = Math.min(minFlow,  negFlow);
-    }
-
-    return { labels, inflowData, growthData, outflowData, nwData, finalBalance: balance, peakNw, peakFlow, minFlow };
+    return Engine.simulateLife(startAge, endAge, principal, rAcc, rDec, rAge, planningEndAge, {
+        milestones: milestones,
+        ss:         ssEvents,
+        windfall:   windfallEvents,
+    });
 }
 
 // ── Simulation Entry Point ────────────────────────────────────

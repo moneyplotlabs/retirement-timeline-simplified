@@ -77,33 +77,9 @@ const mSuccessRate        = document.getElementById('metric-success-rate');
 //   T-Bond total return includes coupon + price appreciation (from FRED / Damodaran)
 //   Arithmetic mean: 5.9% | Std dev: 12.5% | Geometric CAGR: 5.1%
 
-// S&P 500 real annual returns, 1928–2024
-const histEquities = [
-     45.3,  -8.9, -19.8, -37.5,   2.3,  52.8,  -2.9,  43.4,  32.0, -36.8,
-     34.9,  -0.4, -10.4, -19.6,  10.4,  22.3,  17.1,  33.4, -22.2,  -2.9,
-      2.4,  21.3,  24.3,  17.0,  17.5,  -1.7,  53.8,  31.1,   3.5, -13.3,
-     40.9,  10.1,  -0.9,  26.1,  -9.9,  20.8,  15.4,  10.3, -13.1,  20.3,
-      6.0, -13.8,  -1.5,  10.7,  15.1, -21.5, -34.5,  28.3,  18.1, -13.0,
-     -2.3,   4.5,  17.7, -12.7,  17.1,  18.1,   2.2,  26.9,  17.4,   0.8,
-     11.7,  25.8,  -8.7,  26.6,   4.6,   7.1,  -1.3,  34.2,  19.0,  31.1,
-     26.5,  17.9, -12.1, -13.2, -23.9,  26.3,   7.4,   1.4,  12.9,   1.4,
-    -37.1,  23.1,  13.4,  -0.8,  14.0,  30.4,  12.8,   0.7,   9.7,  19.3,
-     -6.2,  28.6,  16.8,  20.2, -23.1,  22.2,  21.5,
-];
-
-// 60/40 portfolio real annual returns, 1928–2024
-const hist6040 = [
-     28.1,  -3.9,  -7.3, -19.9,   9.6,  29.8,   0.9,  26.1,  19.4, -22.9,
-     22.7,   1.1,  -4.9, -16.7,   3.1,  12.7,   9.9,  20.3, -18.6,  -4.9,
-      1.2,  15.2,  12.0,   7.6,  11.0,   0.2,  33.8,  18.6,   0.6,  -6.3,
-     23.2,   4.4,   3.5,  16.0,  -4.3,  12.4,  10.3,   5.7,  -8.0,  10.3,
-      2.9, -12.4,   3.1,   8.9,   8.7, -14.6, -24.1,  15.6,  15.1,  -9.7,
-     -5.0,  -1.7,   4.7,  -7.8,  20.8,  10.5,   5.0,  24.3,  19.5,  -2.8,
-      8.4,  20.4,  -5.1,  20.4,   5.2,   8.7,  -5.0,  28.4,  10.5,  21.8,
-     21.0,   6.4,  -2.1,  -6.3,  -9.3,  15.0,   4.8,   0.6,   7.4,   3.2,
-    -14.0,   8.2,  10.6,   4.6,   8.8,  13.9,  11.6,   0.6,   5.2,  11.7,
-     -4.4,  20.0,  14.0,   7.9, -23.0,  13.6,  11.1,
-];
+// S&P 500 and 60/40 real annual return series (1928–2024) live in engine.js.
+const histEquities = Engine.HIST_EQUITIES;
+const hist6040     = Engine.HIST_6040;
 
 // ── State ─────────────────────────────────────────────────────
 let chartInstance         = null;
@@ -119,92 +95,30 @@ let milestones     = [];
 let ssEvents       = [];
 let windfallEvents = [];
 
-// ── Helpers ───────────────────────────────────────────────────
-const formatCurrency = (num) => '$' + Math.round(num).toLocaleString();
-
-function newId() {
-    return Math.random().toString(36).substring(2, 11);
-}
-
-function snapCeiling(rawPeak) {
-    if (rawPeak >= 1000000) return Math.ceil(rawPeak / 250000) * 250000;
-    if (rawPeak >= 250000)  return Math.ceil(rawPeak / 50000)  * 50000;
-    return Math.ceil(rawPeak / 10000) * 10000;
-}
+// ── Helpers ──────────────────────────────────────────
+// formatCurrency, newId, snapCeiling, percentile → common.js (loaded first)
 
 // ── Return Series Generation ──────────────────────────────────
 const HIST_START_YEAR = 1928;
 const HIST_YEARS      = histEquities.length;   // 97
 
-// Returns a single return series of `count` values for the given method.
-// For cohort method, `cohortOffset` = index into historical array for year 0.
-function getReturnSeries(method, mean, std, count, cohortOffset = 0) {
-    if (method === 'manual') {
-        return Array.from({ length: count }, () => {
-            const u1 = Math.random();
-            const u2 = Math.random();
-            const z  = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-            return (mean / 100) + (z * (std / 100));
-        });
-    }
-    const pool = method === 'equities' ? histEquities : hist6040;
-    if (method === 'cohort-equities' || method === 'cohort-6040') {
-        // Chronological slice starting at cohortOffset
-        return Array.from({ length: count }, (_, i) => pool[cohortOffset + i] / 100);
-    }
-    // Bootstrap resampling
-    return Array.from({ length: count }, () => pool[Math.floor(Math.random() * pool.length)] / 100);
+// Pure return-series + cohort logic lives in engine.js. These thin wrappers
+// inject the historical data so existing call sites are unchanged.
+function getReturnSeries(method, mean, std, count, cohortOffset) {
+    return Engine.getReturnSeries(method, mean, std, count, cohortOffset || 0,
+                                  { equities: histEquities, sixtyForty: hist6040 });
 }
 
-// Returns all valid cohort start offsets given the number of years needed from history.
-function getCohortOffsets(yearsNeeded) {
-    const count = HIST_YEARS - yearsNeeded + 1;
-    if (count <= 0) return [];
-    return Array.from({ length: count }, (_, i) => i);
-}
 
 // Determine whether a method is cohort-based
 const isCohort = (m) => m === 'cohort-equities' || m === 'cohort-6040';
 
-// Build the full list of simulation runs for cohort mode.
-// Returns array of { retAcc, retDec } pairs covering all valid cohorts.
-// Rules:
-//   - If both methods are cohort (or linked): full horizon must fit → cohortYears = horizon
-//   - If only acc is cohort: accHorizon years from history, dec gets random series
-//   - If only dec is cohort: decHorizon years from history, acc gets random series
+// Build the full list of simulation runs for cohort mode (delegates to engine).
 function buildCohortRuns(methodAcc, methodDec, meanAcc, stdAcc, meanDec, stdDec,
                          accHorizon, decHorizon, horizon) {
-    const bothCohort = isCohort(methodAcc) && isCohort(methodDec);
-    const accOnly    = isCohort(methodAcc) && !isCohort(methodDec);
-    const decOnly    = !isCohort(methodAcc) && isCohort(methodDec);
-
-    const poolAcc = methodAcc === 'cohort-equities' ? histEquities : hist6040;
-    const poolDec = methodDec === 'cohort-equities' ? histEquities : hist6040;
-
-    if (bothCohort) {
-        // One contiguous slice per cohort covering the full horizon
-        return getCohortOffsets(horizon).map(offset => ({
-            retAcc: Array.from({ length: horizon }, (_, i) => poolAcc[offset + i] / 100),
-            retDec: Array.from({ length: horizon }, (_, i) => poolDec[offset + i] / 100),
-        }));
-    }
-    if (accOnly) {
-        return getCohortOffsets(accHorizon).map(offset => ({
-            retAcc: Array.from({ length: horizon }, (_, i) =>
-                i < accHorizon ? poolAcc[offset + i] / 100
-                               : getReturnSeries(methodDec, meanDec, stdDec, 1)[0]),
-            retDec: getReturnSeries(methodDec, meanDec, stdDec, horizon),
-        }));
-    }
-    if (decOnly) {
-        return getCohortOffsets(decHorizon).map(offset => ({
-            retAcc: getReturnSeries(methodAcc, meanAcc, stdAcc, horizon),
-            retDec: Array.from({ length: horizon }, (_, i) =>
-                i >= accHorizon ? poolDec[offset + (i - accHorizon)] / 100
-                                : getReturnSeries(methodAcc, meanAcc, stdAcc, 1)[0]),
-        }));
-    }
-    return [];   // neither cohort — handled by regular Monte Carlo path
+    return Engine.buildCohortRuns(methodAcc, methodDec, meanAcc, stdAcc, meanDec, stdDec,
+                                  accHorizon, decHorizon, horizon,
+                                  { equities: histEquities, sixtyForty: hist6040 });
 }
 
 // ── Chart Init ────────────────────────────────────────────────
@@ -443,124 +357,26 @@ function renderMetricRows() {
 }
 
 // ── Simulation ────────────────────────────────────────────────
-function getMilestone(age) {
-    return milestones.filter(m => m.age <= age).pop() || milestones[0];
-}
-
-// Returns the per-age net-worth path and per-age growth — used for Monte Carlo percentile collection.
-// In 'age' mode rAge is fixed. In 'nw' mode, rAge is determined per-run as the first year
-// balance >= nwTarget (capped at endAge if never reached).
+// Pure simulation math lives in engine.js (Engine.simulateNWPath /
+// simulateDeterministicBars). These thin wrappers inject milestones + events.
 function simulateNWPath(startAge, endAge, principal, rAge, nwTarget, mode, returnsAcc, returnsDec) {
-    let balance = principal;
-    const nwByAge     = [];
-    const growthByAge = [];
-
-    // In NW mode we don't know rAge yet — find the first crossing during accumulation
-    let resolvedRAge = (mode === 'age') ? rAge : endAge;   // default: never crossed → work until end
-    let crossingFound = (mode === 'age');
-
-    const horizon = endAge - startAge;
-
-    for (let i = 0; i <= horizon; i++) {
-        const t = startAge + i;
-        nwByAge.push(balance);
-
-        const startBal = balance;
-        const m        = getMilestone(t);
-        const passive  = ssEvents.reduce((acc, ss) => acc + (t >= ss.age ? ss.amt : 0), 0);
-        const windfall = windfallEvents.reduce((acc, wf) => t === wf.age ? acc + wf.amt : acc, 0);
-
-        const rAcc = returnsAcc[i];
-        const rDec = returnsDec[i];
-
-        // Compute end-of-year accumulation balance (used for crossing interpolation)
-        const balanceAfterAcc = startBal * (1 + rAcc) + m.savings + passive + windfall;
-
-        // NW mode: if not yet crossed, check if this year's accumulation crosses the target
-        if (mode === 'nw' && !crossingFound) {
-            if (balanceAfterAcc >= nwTarget) {
-                // Interpolate fractional crossing point within this year
-                const fraction = startBal >= nwTarget ? 0
-                    : (balanceAfterAcc - startBal) > 0
-                        ? (nwTarget - startBal) / (balanceAfterAcc - startBal)
-                        : 0;
-                resolvedRAge  = t + Math.max(0, Math.min(1, fraction));
-                crossingFound = true;
-            }
-        }
-
-        const k     = Math.floor(resolvedRAge);
-        const delta = resolvedRAge - k;
-
-        if (t < k) {
-            balance = balanceAfterAcc;
-            growthByAge.push(balance - startBal - m.savings - passive - windfall);
-        } else if (t === k) {
-            const workFrac   = delta;
-            const retireFrac = 1 - delta;
-            const balanceMid = startBal * Math.pow(1 + rAcc, workFrac)
-                + (m.savings + passive + windfall) * workFrac;
-            balance = (balanceMid - m.spending * retireFrac + (passive + windfall) * retireFrac)
-                * Math.pow(1 + rDec, retireFrac);
-            growthByAge.push(balance - startBal - (m.savings * workFrac) + (m.spending * retireFrac) - passive - windfall);
-        } else {
-            balance = (startBal - m.spending + passive + windfall) * (1 + rDec);
-            growthByAge.push(balance - startBal + m.spending - passive - windfall);
-        }
-    }
-    nwByAge.push(balance);
-
-    return { nwByAge, growthByAge, finalBalance: balance, resolvedRAge };
+    return Engine.simulateNWPath(startAge, endAge, principal, rAge, nwTarget, mode, returnsAcc, returnsDec, {
+        milestones: milestones,
+        ss:         ssEvents,
+        windfall:   windfallEvents,
+    });
 }
 
-// Returns inflow/outflow bar datasets (deterministic — no growth rate needed)
-// and peakFlow/minFlow for axis locking.
-// Growth bar is supplied separately from Monte Carlo p10 results.
+// Deterministic inflow/outflow bars (delegates to engine).
 function simulateDeterministicBars(startAge, endAge, principal, rAge) {
-    const labels      = [];
-    const inflowData  = [];
-    const outflowData = [];
-
-    let peakFlow = 0;
-    let minFlow  = 0;
-
-    const k     = Math.floor(rAge);
-    const delta = rAge - k;
-
-    for (let t = startAge; t <= endAge; t++) {
-        labels.push(t);
-
-        const m        = getMilestone(t);
-        const passive  = ssEvents.reduce((acc, ss) => acc + (t >= ss.age ? ss.amt : 0), 0);
-        const windfall = windfallEvents.reduce((acc, wf) => t === wf.age ? acc + wf.amt : acc, 0);
-
-        if (t < k) {
-            inflowData.push({ x: t, y: m.income + passive + windfall });
-            outflowData.push({ x: t, y: -m.spending });
-        } else if (t === k) {
-            inflowData.push({ x: t, y: (m.income * delta) + passive + windfall });
-            outflowData.push({ x: t, y: -m.spending });
-        } else {
-            inflowData.push({ x: t, y: passive + windfall });
-            outflowData.push({ x: t, y: -m.spending });
-        }
-
-        peakFlow = Math.max(peakFlow, inflowData[inflowData.length - 1].y || 0);
-        minFlow  = Math.min(minFlow,  outflowData[outflowData.length - 1].y || 0);
-    }
-
-    return { labels, inflowData, outflowData, peakFlow, minFlow };
+    return Engine.simulateDeterministicBars(startAge, endAge, principal, rAge, {
+        milestones: milestones,
+        ss:         ssEvents,
+        windfall:   windfallEvents,
+    });
 }
 
-// ── Percentile Helper ─────────────────────────────────────────
-// Returns the p-th percentile (0–100) of a sorted array.
-function percentile(sorted, p) {
-    if (sorted.length === 0) return 0;
-    const idx = (p / 100) * (sorted.length - 1);
-    const lo  = Math.floor(idx);
-    const hi  = Math.ceil(idx);
-    return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-}
+// percentile() → common.js (loaded before this script)
 
 // ── Simulation Entry Point ────────────────────────────────────
 function updateSimulation() {

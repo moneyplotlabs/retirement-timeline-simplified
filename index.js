@@ -52,118 +52,18 @@ let ratesLinked        = false;
 let ssEvents           = [];
 let windfallEvents     = [];
 
-// ── Helpers ───────────────────────────────────────────────────
-const formatCurrency = (num) => '$' + Math.round(num).toLocaleString();
+// ── Helpers ──────────────────────────────────────────
+// formatCurrency, newId, snapCeiling → common.js (loaded before this script)
 
-function snapCeiling(rawPeak) {
-    if (rawPeak >= 1000000) return Math.ceil(rawPeak / 250000) * 250000;
-    if (rawPeak >= 250000)  return Math.ceil(rawPeak / 50000)  * 50000;
-    if (rawPeak >= 50000)   return Math.ceil(rawPeak / 10000)  * 10000;
-    return Math.ceil(rawPeak / 5000) * 5000;
-}
-
-function newId() {
-    return Math.random().toString(36).substring(2, 11);
-}
-
-// ── Core Simulation ───────────────────────────────────────────
+// ── Core Simulation ─────────────────────────────────
+// Pure math lives in engine.js (Engine.macroTimeline). This thin wrapper injects
+// the live legacy-floor and event state so existing call sites are unchanged.
 function calculateTimeline(currentAge, stopAge, a0, s, c, rAcc, rDec) {
-    const totalHorizon = stopAge - currentAge;
-    const floor = parseFloat(boxLegacyFloor.value) || 0;
-
-    if (totalHorizon <= 0) {
-        return { workingYears: 0, retirementAge: currentAge, peakNetWorth: a0, accumulationData: [], depletionData: [], finalBalanceAtMaxWork: a0 };
-    }
-
-    const simulate = (testW) => {
-        let bal  = a0;
-        let peak = a0;
-        const accData = [];
-        const depData = [];
-
-        const k     = Math.floor(testW);
-        const delta = testW - k;
-
-        for (let i = 0; i <= totalHorizon; i++) {
-            const age = currentAge + i;
-
-            // Apply one-time windfalls
-            windfallEvents.forEach(wf => { if (age === wf.age) bal += wf.amt; });
-
-            // Sum passive income sources active this year
-            const p = ssEvents.reduce((acc, ss) => acc + (age >= ss.age ? ss.amt : 0), 0);
-
-            if (i < k) {
-                // Full working year
-                accData.push({ x: age, y: bal });
-                bal  = bal * (1 + rAcc) + s + p;
-                peak = Math.max(peak, bal);
-
-            } else if (i === k) {
-                // Transition year (fractional retirement)
-                if (delta > 0) {
-                    accData.push({ x: age, y: bal });
-                    const balMid = bal * Math.pow(1 + rAcc, delta) + (s + p) * delta;
-                    bal  = (balMid - (c - p) * (1 - delta)) * Math.pow(1 + rDec, 1 - delta);
-                    peak = Math.max(peak, balMid, bal);
-                    const midPoint = { x: age + delta, y: Math.max(floor, balMid) };
-                    accData.push(midPoint);
-                    depData.push(midPoint);
-                } else {
-                    // Integer transition
-                    depData.push({ x: age, y: Math.max(floor, bal) });
-                    bal  = (bal - c + p) * (1 + rDec);
-                    peak = Math.max(peak, bal);
-                }
-
-            } else {
-                // Full retirement year
-                depData.push({ x: age, y: Math.max(floor, bal) });
-                bal  = (bal - c + p) * (1 + rDec);
-                peak = Math.max(peak, bal);
-            }
-        }
-
-        // Terminal point at end of planning horizon
-        const terminalAge = currentAge + totalHorizon + 1;
-        if (totalHorizon >= testW) {
-            depData.push({ x: terminalAge, y: Math.max(floor, bal) });
-        } else {
-            accData.push({ x: terminalAge, y: bal });
-        }
-
-        return { finalBal: bal, peak, accData, depData };
-    };
-
-    // Binary-search for optimal working years
-    const resAtH    = simulate(totalHorizon);
-    const resAtZero = simulate(0);
-
-    let w;
-    if (resAtZero.finalBal >= floor) {
-        w = 0;
-    } else if (resAtH.finalBal < floor) {
-        w = totalHorizon;
-    } else {
-        let low = 0, high = totalHorizon;
-        for (let i = 0; i < 60; i++) {
-            const mid = (low + high) / 2;
-            if (simulate(mid).finalBal < floor) low = mid;
-            else high = mid;
-        }
-        w = (low + high) / 2;
-    }
-
-    const final = simulate(w);
-
-    return {
-        workingYears:          w,
-        retirementAge:         currentAge + w,
-        peakNetWorth:          final.peak,
-        accumulationData:      final.accData,
-        depletionData:         final.depData,
-        finalBalanceAtMaxWork: resAtH.finalBal,
-    };
+    return Engine.macroTimeline(currentAge, stopAge, a0, s, c, rAcc, rDec, {
+        floor:    parseFloat(boxLegacyFloor.value) || 0,
+        ss:       ssEvents,
+        windfall: windfallEvents,
+    });
 }
 
 // ── Visualization ─────────────────────────────────────────────
