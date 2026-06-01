@@ -559,3 +559,5 @@ input[type="range"]::-webkit-slider-thumb:hover {
     color: var(--accent-blue);
     text-decoration: underline;
 }
+
+.hidden-retirement-mode{display:none;}

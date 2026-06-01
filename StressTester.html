@@ -207,9 +207,10 @@
             <p>
                 <strong>Methodology:</strong> Runs <strong>1,000 Monte Carlo iterations</strong>, sampling
                 historical annual returns at random with replacement (bootstrap resampling). The net worth chart
-                displays a <strong>percentile fan</strong>: outer band = 10th–90th percentile, inner band =
-                25th–75th percentile, solid line = 50th percentile (median). Cash flow bars reflect the
-                deterministic median path using the arithmetic mean of the chosen return distribution.
+                displays a <strong>percentile fan</strong>: p10/p25 as dashed lines (downside), p50 as the solid
+                median. The asset growth bars show the single simulation run whose terminal balance lands closest
+                to the <strong>10th percentile outcome</strong> — a coherent real return sequence that produced a
+                bad-but-realistic result, not a synthetic worst-case-every-year path.
                 Success rate = share of runs ending above the legacy floor.
             </p>
             <p>

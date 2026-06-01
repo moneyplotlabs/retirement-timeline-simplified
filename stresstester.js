@@ -184,7 +184,7 @@ function initChart() {
                     stack:           'flow',
                 },
                 {
-                    label:           'Asset Growth (median)',
+                    label:           'Asset Growth (p10 scenario)',
                     data:            [],
                     backgroundColor: 'rgba(139, 92, 246, 0.6)',
                     borderColor:     '#8B5CF6',
@@ -317,17 +317,19 @@ function getMilestone(age) {
     return milestones.filter(m => m.age <= age).pop() || milestones[0];
 }
 
-// Returns only the per-age net-worth path — used for Monte Carlo percentile collection.
+// Returns only the per-age net-worth path and per-age growth — used for Monte Carlo percentile collection.
 function simulateNWPath(startAge, endAge, principal, rAge, returnsAcc, returnsDec) {
     let balance = principal;
-    const nwByAge = [];   // one entry per integer age from startAge to endAge
+    const nwByAge     = [];   // balance at start of each age
+    const growthByAge = [];   // asset growth during each age year
 
     const k     = Math.floor(rAge);
     const delta = rAge - k;
 
     for (let t = startAge; t <= endAge; t++) {
-        nwByAge.push(balance);   // balance at START of age t
+        nwByAge.push(balance);
 
+        const startBal = balance;
         const m        = getMilestone(t);
         const passive  = ssEvents.reduce((acc, ss) => acc + (t >= ss.age ? ss.amt : 0), 0);
         const windfall = windfallEvents.reduce((acc, wf) => t === wf.age ? acc + wf.amt : acc, 0);
@@ -337,6 +339,7 @@ function simulateNWPath(startAge, endAge, principal, rAge, returnsAcc, returnsDe
 
         if (t < k) {
             balance = balance * (1 + rAcc) + m.savings + passive + windfall;
+            growthByAge.push(balance - startBal - m.savings - passive - windfall);
         } else if (t === k) {
             const workFrac   = delta;
             const retireFrac = 1 - delta;
@@ -344,37 +347,27 @@ function simulateNWPath(startAge, endAge, principal, rAge, returnsAcc, returnsDe
                 + (m.savings + passive + windfall) * workFrac;
             balance = (balanceMid - m.spending * retireFrac + (passive + windfall) * retireFrac)
                 * Math.pow(1 + rDec, retireFrac);
+            growthByAge.push(balance - startBal - (m.savings * workFrac) + (m.spending * retireFrac) - passive - windfall);
         } else {
             balance = (balance - m.spending + passive + windfall) * (1 + rDec);
+            growthByAge.push(balance - startBal + m.spending - passive - windfall);
         }
     }
-    // include terminal balance (start of age endAge+1)
-    nwByAge.push(balance);
+    nwByAge.push(balance);   // terminal balance
 
-    return { nwByAge, finalBalance: balance };
+    return { nwByAge, growthByAge, finalBalance: balance };
 }
 
-// Returns bar datasets (inflow/outflow/growth) using the deterministic mean return,
-// plus peakFlow/minFlow for axis locking. Used once per update for the bars only.
-function simulateMedianBars(startAge, endAge, principal, rAge, methodAcc, meanAcc, stdAcc, methodDec, meanDec, stdDec) {
-    // Use the arithmetic mean of the chosen distribution as a single deterministic rate
-    function meanRate(method, mean) {
-        if (method === 'manual') return mean / 100;
-        const pool = method === 'equities' ? histEquities : hist6040;
-        return pool.reduce((s, v) => s + v, 0) / pool.length / 100;
-    }
-    const rAcc = meanRate(methodAcc, meanAcc);
-    const rDec = meanRate(methodDec, meanDec);
-
+// Returns inflow/outflow bar datasets (deterministic — no growth rate needed)
+// and peakFlow/minFlow for axis locking.
+// Growth bar is supplied separately from Monte Carlo p10 results.
+function simulateDeterministicBars(startAge, endAge, principal, rAge) {
     const labels      = [];
     const inflowData  = [];
-    const growthData  = [];
     const outflowData = [];
 
-    let balance  = principal;
     let peakFlow = 0;
     let minFlow  = 0;
-    let peakNw   = principal;
 
     const k     = Math.floor(rAge);
     const delta = rAge - k;
@@ -382,51 +375,26 @@ function simulateMedianBars(startAge, endAge, principal, rAge, methodAcc, meanAc
     for (let t = startAge; t <= endAge; t++) {
         labels.push(t);
 
-        const startBal = balance;
         const m        = getMilestone(t);
         const passive  = ssEvents.reduce((acc, ss) => acc + (t >= ss.age ? ss.amt : 0), 0);
         const windfall = windfallEvents.reduce((acc, wf) => t === wf.age ? acc + wf.amt : acc, 0);
 
-        let growth = 0;
-
         if (t < k) {
             inflowData.push({ x: t, y: m.income + passive + windfall });
             outflowData.push({ x: t, y: -m.spending });
-            balance = balance * (1 + rAcc) + m.savings + passive + windfall;
-            growth  = balance - startBal - m.savings - passive - windfall;
-            peakNw  = Math.max(peakNw, balance);
-
         } else if (t === k) {
-            const workFrac   = delta;
-            const retireFrac = 1 - delta;
-            inflowData.push({ x: t, y: (m.income * workFrac) + passive + windfall });
+            inflowData.push({ x: t, y: (m.income * delta) + passive + windfall });
             outflowData.push({ x: t, y: -m.spending });
-            const balanceMid = balance * Math.pow(1 + rAcc, workFrac)
-                + (m.savings + passive + windfall) * workFrac;
-            balance = (balanceMid - m.spending * retireFrac + (passive + windfall) * retireFrac)
-                * Math.pow(1 + rDec, retireFrac);
-            growth  = balance - startBal - (m.savings * workFrac) + (m.spending * retireFrac) - passive - windfall;
-            peakNw  = Math.max(peakNw, balanceMid, balance);
-
         } else {
             inflowData.push({ x: t, y: passive + windfall });
             outflowData.push({ x: t, y: -m.spending });
-            balance = (balance - m.spending + passive + windfall) * (1 + rDec);
-            growth  = balance - startBal + m.spending - passive - windfall;
-            peakNw  = Math.max(peakNw, balance);
         }
 
-        growthData.push({ x: t, y: growth });
-
-        const posFlow = Math.max(0, inflowData[inflowData.length - 1].y || 0)
-                      + Math.max(0, growthData[growthData.length - 1].y || 0);
-        const negFlow = (outflowData[outflowData.length - 1].y || 0)
-                      + Math.min(0, growthData[growthData.length - 1].y || 0);
-        peakFlow = Math.max(peakFlow, posFlow);
-        minFlow  = Math.min(minFlow,  negFlow);
+        peakFlow = Math.max(peakFlow, inflowData[inflowData.length - 1].y || 0);
+        minFlow  = Math.min(minFlow,  outflowData[outflowData.length - 1].y || 0);
     }
 
-    return { labels, inflowData, outflowData, growthData, peakNw, peakFlow, minFlow };
+    return { labels, inflowData, outflowData, peakFlow, minFlow };
 }
 
 // ── Percentile Helper ─────────────────────────────────────────
@@ -464,9 +432,10 @@ function updateSimulation() {
     // ── Monte Carlo: 1000 iterations ──────────────────────────
     const ITERATIONS = 1000;
 
-    // allNW[ageIndex] = array of balances across all runs at that age
-    const allNW = Array.from({ length: nAges }, () => []);
-    let successes = 0;
+    const nAgesBar   = stopAge - currentAge + 1;   // bar ages: startAge..stopAge (no terminal)
+    const allNW      = Array.from({ length: nAges }, () => []);
+    const allRunData = [];   // stores { finalBalance, growthByAge } for each run
+    let successes    = 0;
 
     for (let i = 0; i < ITERATIONS; i++) {
         const retAcc = getReturnSeries(methodAcc, meanAcc, stdAcc, horizon);
@@ -474,33 +443,41 @@ function updateSimulation() {
         const sim    = simulateNWPath(currentAge, stopAge, principal, rAge, retAcc, retDec);
         if (sim.finalBalance >= floor) successes++;
         sim.nwByAge.forEach((bal, idx) => allNW[idx].push(bal));
+        allRunData.push({ finalBalance: sim.finalBalance, growthByAge: sim.growthByAge });
     }
 
-    // Sort each age bucket so percentile() works correctly
+    // Sort each NW bucket so percentile() works correctly
     allNW.forEach(bucket => bucket.sort((a, b) => a - b));
 
-    // Build percentile datasets as {x, y} point arrays
+    // ── NW percentile series ──────────────────────────────────
     const ages = Array.from({ length: nAges }, (_, i) => currentAge + i);
 
-    function makePercentileSeries(p) {
+    function makeNWPercentile(p) {
         return ages.map((age, idx) => ({ x: age, y: Math.max(0, percentile(allNW[idx], p)) }));
     }
 
-    const nwP10 = makePercentileSeries(10);
-    const nwP25 = makePercentileSeries(25);
-    const nwP50 = makePercentileSeries(50);
-    const nwP75 = makePercentileSeries(75);
-    const nwP90 = makePercentileSeries(90);
+    const nwP10 = makeNWPercentile(10);
+    const nwP25 = makeNWPercentile(25);
+    const nwP50 = makeNWPercentile(50);
+    const nwP75 = makeNWPercentile(75);
+    const nwP90 = makeNWPercentile(90);
 
     // Peak of p90 line drives the Y-axis auto-scale cache
     computedPeakCache = Math.max(...nwP90.map(d => d.y));
 
-    // ── Median bars ───────────────────────────────────────────
-    const bars = simulateMedianBars(
-        currentAge, stopAge, principal, rAge,
-        methodAcc, meanAcc, stdAcc,
-        methodDec, meanDec, stdDec,
+    // ── p10-representative growth bars ────────────────────────
+    // Find the single run whose terminal balance is closest to the p10 terminal NW.
+    // This gives a coherent real sequence of returns that produced a bad-but-realistic outcome.
+    const p10TerminalNW = nwP10[nwP10.length - 1].y;
+    const p10Run = allRunData.reduce((best, run) =>
+        Math.abs(run.finalBalance - p10TerminalNW) < Math.abs(best.finalBalance - p10TerminalNW)
+            ? run : best
     );
+    const barAges       = Array.from({ length: nAgesBar }, (_, i) => currentAge + i);
+    const growthP10Data = barAges.map((age, idx) => ({ x: age, y: p10Run.growthByAge[idx] ?? 0 }));
+
+    // ── Inflow / outflow bars (deterministic — milestones only) ──
+    const bars = simulateDeterministicBars(currentAge, stopAge, principal, rAge);
 
     // ── Metrics ───────────────────────────────────────────────
     const successRate = (successes / ITERATIONS) * 100;
@@ -522,11 +499,11 @@ function updateSimulation() {
     const yLeftMaxCon    = boxYLeftMax.value !== "" ? parseFloat(boxYLeftMax.value) : undefined;
 
     // ── Push to chart ─────────────────────────────────────────
-    // Dataset indices: 0=inflow, 1=outflow, 2=growth, 3=p10, 4=p25, 5=p50, 6=p75, 7=p90
+    // Dataset indices: 0=inflow, 1=outflow, 2=growth(p10), 3=NWp10, 4=NWp25, 5=NWp50, 6=NWp75, 7=NWp90
     chartInstance.data.labels                  = bars.labels;
     chartInstance.data.datasets[0].data        = bars.inflowData;
     chartInstance.data.datasets[1].data        = bars.outflowData;
-    chartInstance.data.datasets[2].data        = bars.growthData;
+    chartInstance.data.datasets[2].data        = growthP10Data;
     chartInstance.data.datasets[3].data        = nwP10;
     chartInstance.data.datasets[4].data        = nwP25;
     chartInstance.data.datasets[5].data        = nwP50;
