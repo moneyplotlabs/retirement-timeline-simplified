@@ -16,6 +16,13 @@ const boxEndAge           = document.getElementById('box-end-age');
 const sliderRetireAge     = document.getElementById('slider-retire-age');
 const boxRetireAge        = document.getElementById('box-retire-age');
 
+const retireModeAge       = document.getElementById('retire-mode-age');
+const retireModeNW        = document.getElementById('retire-mode-nw');
+const retireAgeGroup      = document.getElementById('retire-age-group');
+const retireNWGroup       = document.getElementById('retire-nw-group');
+const inputRetireNW       = document.getElementById('input-retire-nw');
+const boxRetireNW         = document.getElementById('box-retire-nw');
+
 const inputPrincipal      = document.getElementById('input-principal');
 const boxPrincipal        = document.getElementById('box-principal');
 
@@ -102,6 +109,7 @@ const hist6040 = [
 let chartInstance         = null;
 let ratesLinked           = false;
 let computedPeakCache     = 0;
+let retireMode            = 'age';   // 'age' | 'nw'
 
 let milestones     = [];
 let ssEvents       = [];
@@ -192,21 +200,21 @@ function initChart() {
                     stack:           'flow',
                 },
                 // ── NW percentile lines ───────────────────────────────
-                // p10 — dashed red, shown
+                // p10 — dashed dark blue, shown
                 {
                     ...lineBase,
                     label:       'NW p10 (10th pct)',
                     data:        [],
-                    borderColor: 'rgba(239, 68, 68, 0.85)',
+                    borderColor: 'rgba(96, 165, 250, 0.9)',
                     borderDash:  [4, 4],
                     hidden:      false,
                 },
-                // p25 — dashed amber, shown
+                // p25 — dashed medium blue, shown
                 {
                     ...lineBase,
                     label:       'NW p25 (25th pct)',
                     data:        [],
-                    borderColor: 'rgba(251, 146, 60, 0.9)',
+                    borderColor: 'rgba(147, 197, 253, 0.85)',
                     borderDash:  [4, 4],
                     hidden:      false,
                 },
@@ -317,25 +325,40 @@ function getMilestone(age) {
     return milestones.filter(m => m.age <= age).pop() || milestones[0];
 }
 
-// Returns only the per-age net-worth path and per-age growth — used for Monte Carlo percentile collection.
-function simulateNWPath(startAge, endAge, principal, rAge, returnsAcc, returnsDec) {
+// Returns the per-age net-worth path and per-age growth — used for Monte Carlo percentile collection.
+// In 'age' mode rAge is fixed. In 'nw' mode, rAge is determined per-run as the first year
+// balance >= nwTarget (capped at endAge if never reached).
+function simulateNWPath(startAge, endAge, principal, rAge, nwTarget, mode, returnsAcc, returnsDec) {
     let balance = principal;
-    const nwByAge     = [];   // balance at start of each age
-    const growthByAge = [];   // asset growth during each age year
+    const nwByAge     = [];
+    const growthByAge = [];
 
-    const k     = Math.floor(rAge);
-    const delta = rAge - k;
+    // In NW mode we don't know rAge yet — find the first crossing during accumulation
+    let resolvedRAge = (mode === 'age') ? rAge : endAge;   // default: never crossed → work until end
+    let crossingFound = (mode === 'age');
 
-    for (let t = startAge; t <= endAge; t++) {
+    const horizon = endAge - startAge;
+
+    for (let i = 0; i <= horizon; i++) {
+        const t = startAge + i;
         nwByAge.push(balance);
+
+        // NW mode: check if we've just crossed the target this year (before spending)
+        if (mode === 'nw' && !crossingFound && balance >= nwTarget) {
+            resolvedRAge  = t;
+            crossingFound = true;
+        }
 
         const startBal = balance;
         const m        = getMilestone(t);
         const passive  = ssEvents.reduce((acc, ss) => acc + (t >= ss.age ? ss.amt : 0), 0);
         const windfall = windfallEvents.reduce((acc, wf) => t === wf.age ? acc + wf.amt : acc, 0);
 
-        const rAcc = returnsAcc[t - startAge];
-        const rDec = returnsDec[t - startAge];
+        const rAcc = returnsAcc[i];
+        const rDec = returnsDec[i];
+
+        const k     = Math.floor(resolvedRAge);
+        const delta = resolvedRAge - k;
 
         if (t < k) {
             balance = balance * (1 + rAcc) + m.savings + passive + windfall;
@@ -353,9 +376,9 @@ function simulateNWPath(startAge, endAge, principal, rAge, returnsAcc, returnsDe
             growthByAge.push(balance - startBal + m.spending - passive - windfall);
         }
     }
-    nwByAge.push(balance);   // terminal balance
+    nwByAge.push(balance);
 
-    return { nwByAge, growthByAge, finalBalance: balance };
+    return { nwByAge, growthByAge, finalBalance: balance, resolvedRAge };
 }
 
 // Returns inflow/outflow bar datasets (deterministic — no growth rate needed)
@@ -414,7 +437,6 @@ function updateSimulation() {
 
     const currentAge = parseInt(boxStartAge.value);
     const stopAge    = parseInt(boxEndAge.value);
-    const rAge       = parseFloat(boxRetireAge.value);
     const principal  = parseFloat(boxPrincipal.value) || 0;
     const floor      = parseFloat(boxLegacyFloor.value) || 0;
 
@@ -429,21 +451,27 @@ function updateSimulation() {
     const nAges   = stopAge - currentAge + 2;   // +1 for terminal balance
     const horizon = nAges;
 
+    // Retirement target — either fixed age or NW threshold
+    const rAge    = parseFloat(boxRetireAge.value);
+    const nwTarget = parseFloat(boxRetireNW.value) || 0;
+
     // ── Monte Carlo: 1000 iterations ──────────────────────────
     const ITERATIONS = 1000;
 
-    const nAgesBar   = stopAge - currentAge + 1;   // bar ages: startAge..stopAge (no terminal)
-    const allNW      = Array.from({ length: nAges }, () => []);
-    const allRunData = [];   // stores { finalBalance, growthByAge } for each run
-    let successes    = 0;
+    const nAgesBar    = stopAge - currentAge + 1;
+    const allNW       = Array.from({ length: nAges }, () => []);
+    const allRunData  = [];
+    const allRAges    = [];   // resolved retirement age per run (NW mode only)
+    let successes     = 0;
 
     for (let i = 0; i < ITERATIONS; i++) {
         const retAcc = getReturnSeries(methodAcc, meanAcc, stdAcc, horizon);
         const retDec = getReturnSeries(methodDec, meanDec, stdDec, horizon);
-        const sim    = simulateNWPath(currentAge, stopAge, principal, rAge, retAcc, retDec);
+        const sim    = simulateNWPath(currentAge, stopAge, principal, rAge, nwTarget, retireMode, retAcc, retDec);
         if (sim.finalBalance >= floor) successes++;
         sim.nwByAge.forEach((bal, idx) => allNW[idx].push(bal));
         allRunData.push({ finalBalance: sim.finalBalance, growthByAge: sim.growthByAge });
+        if (retireMode === 'nw') allRAges.push(sim.resolvedRAge);
     }
 
     // Sort each NW bucket so percentile() works correctly
@@ -466,8 +494,6 @@ function updateSimulation() {
     computedPeakCache = Math.max(...nwP90.map(d => d.y));
 
     // ── p10-representative growth bars ────────────────────────
-    // Find the single run whose terminal balance is closest to the p10 terminal NW.
-    // This gives a coherent real sequence of returns that produced a bad-but-realistic outcome.
     const p10TerminalNW = nwP10[nwP10.length - 1].y;
     const p10Run = allRunData.reduce((best, run) =>
         Math.abs(run.finalBalance - p10TerminalNW) < Math.abs(best.finalBalance - p10TerminalNW)
@@ -476,8 +502,9 @@ function updateSimulation() {
     const barAges       = Array.from({ length: nAgesBar }, (_, i) => currentAge + i);
     const growthP10Data = barAges.map((age, idx) => ({ x: age, y: p10Run.growthByAge[idx] ?? 0 }));
 
-    // ── Inflow / outflow bars (deterministic — milestones only) ──
-    const bars = simulateDeterministicBars(currentAge, stopAge, principal, rAge);
+    // Inflow / outflow bars — use p90 retire age in NW mode so bars match the worst-case scenario
+    const barsRAge = (retireMode === 'age') ? rAge : percentile([...allRAges].sort((a,b)=>a-b), 90);
+    const bars     = simulateDeterministicBars(currentAge, stopAge, principal, barsRAge);
 
     // ── Metrics ───────────────────────────────────────────────
     const successRate = (successes / ITERATIONS) * 100;
@@ -485,8 +512,21 @@ function updateSimulation() {
     mSuccessRate.parentElement.className = 'metric-card '
         + (successRate > 80 ? 'green' : successRate > 50 ? 'blue' : '');
 
-    mWorkYears.innerText = Math.max(0, rAge - currentAge).toFixed(1) + ' Years';
-    mRetireAge.innerText = 'Age ' + rAge.toFixed(1);
+    if (retireMode === 'age') {
+        const w = Math.max(0, rAge - currentAge);
+        mWorkYears.innerText = w.toFixed(1) + ' Years';
+        mRetireAge.innerText = 'Age ' + rAge.toFixed(1);
+        document.getElementById('metric-work-years-label').innerText = 'Working Years';
+        document.getElementById('metric-retire-age-label').innerText = 'Retirement Age';
+    } else {
+        const sortedRAges   = [...allRAges].sort((a, b) => a - b);
+        const p90RetireAge  = percentile(sortedRAges, 90);
+        const p50RetireAge  = percentile(sortedRAges, 50);
+        mWorkYears.innerText = (p90RetireAge - currentAge).toFixed(1) + ' Yrs (p10)';
+        mRetireAge.innerText = 'Age ' + p50RetireAge.toFixed(1) + ' (p50)';
+        document.getElementById('metric-work-years-label').innerText = 'Working Yrs (10th percentile)';
+        document.getElementById('metric-retire-age-label').innerText = 'Retire Age (50th percentile)';
+    }
 
     document.getElementById('label-principal').innerText    = 'Starting Balance: '     + formatCurrency(principal);
     document.getElementById('label-legacy-floor').innerText = 'Desired Legacy Floor: ' + formatCurrency(floor);
@@ -522,7 +562,39 @@ function updateSimulation() {
     updateURLParams();
 }
 
-// ── Growth Method Toggle ──────────────────────────────────────
+// ── Retire Mode Toggle ────────────────────────────────────────
+function applyRetireMode() {
+    const isNW = retireMode === 'nw';
+    retireAgeGroup.style.display = isNW ? 'none'  : 'flex';
+    retireNWGroup.style.display  = isNW ? 'block' : 'none';
+    retireModeAge.classList.toggle('locked', !isNW);
+    retireModeNW.classList.toggle('locked',   isNW);
+}
+
+retireModeAge.addEventListener('click', () => {
+    if (retireMode === 'age') return;
+    retireMode = 'age';
+    applyRetireMode();
+    updateSimulation();
+});
+
+retireModeNW.addEventListener('click', () => {
+    if (retireMode === 'nw') return;
+    retireMode = 'nw';
+    applyRetireMode();
+    updateSimulation();
+});
+
+// NW target input change
+boxRetireNW.addEventListener('change', () => {
+    document.getElementById('label-retire-nw').innerText = 'Retire at Net Worth: ' + formatCurrency(boxRetireNW.value);
+    updateSimulation();
+});
+inputRetireNW.addEventListener('input', () => {
+    boxRetireNW.value = inputRetireNW.value;
+    document.getElementById('label-retire-nw').innerText = 'Retire at Net Worth: ' + formatCurrency(boxRetireNW.value);
+    updateSimulation();
+});
 function toggleManualInputs() {
     manualInputsAcc.style.display = selectGrowthMethodAcc.value === 'manual' ? 'grid' : 'none';
     if (ratesLinked) {
@@ -801,8 +873,11 @@ function updateURLParams() {
     const params = new URLSearchParams();
     params.set('startAge',    boxStartAge.value);
     params.set('endAge',      boxEndAge.value);
+    params.set('retireMode',  retireMode);
     params.set('principal',   boxPrincipal.value);
     params.set('legacyFloor', boxLegacyFloor.value);
+    if (retireMode === 'age') params.set('retireAge', boxRetireAge.value);
+    else                      params.set('retireNW',  boxRetireNW.value);
     params.set('linked',      ratesLinked);
     params.set('ss',          JSON.stringify(ssEvents.map(e => [e.amt, e.age])));
     params.set('wf',          JSON.stringify(windfallEvents.map(e => [e.amt, e.age])));
@@ -819,6 +894,9 @@ function loadParamsFromURL() {
     const p = new URLSearchParams(window.location.search);
     if (p.has('startAge'))    boxStartAge.value    = sliderStartAge.value    = p.get('startAge');
     if (p.has('endAge'))      boxEndAge.value      = sliderEndAge.value      = p.get('endAge');
+    if (p.has('retireAge'))   boxRetireAge.value   = sliderRetireAge.value   = p.get('retireAge');
+    if (p.has('retireNW'))    boxRetireNW.value    = inputRetireNW.value     = p.get('retireNW');
+    if (p.has('retireMode'))  retireMode           = p.get('retireMode');
     if (p.has('principal'))   boxPrincipal.value   = inputPrincipal.value    = p.get('principal');
     if (p.has('legacyFloor')) boxLegacyFloor.value = sliderLegacyFloor.value = p.get('legacyFloor');
     if (p.has('xMin'))     boxAxisMin.value  = p.get('xMin');
@@ -871,6 +949,7 @@ boxYLeftMax.addEventListener('change', updateSimulation);
 
 // ── Boot ──────────────────────────────────────────────────────
 loadParamsFromURL();
+applyRetireMode();
 
 document.getElementById('label-principal').innerText    = 'Starting Balance: '     + formatCurrency(boxPrincipal.value);
 document.getElementById('label-legacy-floor').innerText = 'Desired Legacy Floor: ' + formatCurrency(boxLegacyFloor.value);

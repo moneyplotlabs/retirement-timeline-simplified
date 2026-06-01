@@ -14,11 +14,11 @@
 
     <div class="metrics-grid">
         <div class="metric-card">
-            <div class="metric-label">Working Years Needed</div>
+            <div id="metric-work-years-label" class="metric-label">Working Years</div>
             <div id="metric-work-years" class="metric-value">0.0 Years</div>
         </div>
         <div class="metric-card blue">
-            <div class="metric-label">Retirement Age Target</div>
+            <div id="metric-retire-age-label" class="metric-label">Retirement Age</div>
             <div id="metric-retire-age" class="metric-value">Age --</div>
         </div>
         <div class="metric-card">
@@ -66,10 +66,28 @@
             </div>
 
             <div class="control-group">
+                <label class="control-label">Retirement Trigger</label>
+                <div class="interactive-row" style="gap:6px;">
+                    <button id="retire-mode-age" class="btn-lock locked" style="flex:1;">Retire at Age</button>
+                    <button id="retire-mode-nw"  class="btn-lock"        style="flex:1;">Retire at Net Worth</button>
+                </div>
+            </div>
+
+            <!-- Age-based retirement (default visible) -->
+            <div id="retire-age-group" class="control-group" style="display:flex; flex-direction:column; gap:8px;">
                 <label class="control-label">Retirement Age</label>
                 <div class="interactive-row">
                     <input type="range"  id="slider-retire-age" min="0" max="100" value="65">
                     <input type="number" id="box-retire-age"    class="manual-box" min="0" max="100" value="65">
+                </div>
+            </div>
+
+            <!-- NW-based retirement (hidden by default) -->
+            <div id="retire-nw-group" class="control-group" style="display:none;">
+                <label class="control-label" id="label-retire-nw">Retire at Net Worth: $1,000,000</label>
+                <div class="interactive-row">
+                    <input type="range"  id="input-retire-nw" min="0" max="5000000" step="50000" value="1000000">
+                    <input type="number" id="box-retire-nw"   class="manual-box" min="0" step="50000" value="1000000" placeholder="$">
                 </div>
             </div>
 
